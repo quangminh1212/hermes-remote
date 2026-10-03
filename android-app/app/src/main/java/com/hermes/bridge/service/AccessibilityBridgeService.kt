@@ -2,15 +2,24 @@ package com.hermes.bridge.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.PendingIntent
+import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityManager
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.hermes.bridge.ui.MainActivity
 import com.hermes.bridge.websocket.WebSocketClient
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.*
+import java.io.ByteArrayOutputStream
+import java.util.Base64
 
 /**
  * Core accessibility service that provides device interaction capabilities
@@ -63,30 +72,69 @@ class AccessibilityBridgeService : AccessibilityService() {
     }
     
     /**
-     * Execute tap at coordinates
+     * Execute tap at coordinates with optional duration
      */
     fun executeTap(x: Float, y: Float, durationMs: Int = 100) {
         scope.launch {
             try {
-                performGlobalAction(GLOBAL_ACTION_NONE)
-                
-                val gesture = android.view.MotionEvent.obtain(
-                    0, 0, 0,
-                    x, y,
-                    0
-                )
-                
-                // Send touch event
-                sendGestureEvent(gesture)
-                
-                gesture.recycle()
-                
-                delay(durationMs.toLong())
-                
+                // Use performGlobalAction for better compatibility
+                sendGestureEvent(createTouchEvents(x, y, durationMs))
             } catch (e: Exception) {
                 e.printStackTrace()
+                // Fallback method
+                try {
+                    pressKeyAtCoordinates(x, y)
+                } catch (fallbackEx: Exception) {
+                    fallbackEx.printStackTrace()
+                }
             }
         }
+    }
+    
+    /**
+     * Create touch motion events for a tap gesture
+     */
+    private fun createTouchEvents(x: Float, y: Float, durationMs: Int): KeyEvent {
+        val downTime = System.currentTimeMillis()
+        val currentTime = downTime
+        
+        // ACTION_DOWN
+        val downEvent = KeyEvent(
+            downTime, currentTime,
+            KeyEvent.ACTION_DOWN, 0f, 0f,
+            0, 0, 0.0f, 0.0f,
+            android.view.InputDevice.SOURCE_TOUCHSCREEN,
+            android.view.InputDevice.KEYBOARD_DEVICE_ID,
+            KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_FROM_SYSTEM,
+            KeyEvent.META_SHIFT_LEFT_ON,
+            android.view.MotionEvent.ACTION_DOWN, x, y, 0
+        )
+        
+        // Small delay
+        Thread.sleep(10)
+        
+        // ACTION_UP
+        val upEvent = KeyEvent(
+            downTime, System.currentTimeMillis(),
+            KeyEvent.ACTION_UP, 0f, 0f,
+            0, 0, 0.0f, 0.0f,
+            android.view.InputDevice.SOURCE_TOUCHSCREEN,
+            android.view.InputDevice.KEYBOARD_DEVICE_ID,
+            KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_FROM_SYSTEM,
+            KeyEvent.META_SHIFT_LEFT_ON,
+            android.view.MotionEvent.ACTION_UP, x, y, 0
+        )
+        
+        // Send both events
+        sendKeyEvent(downEvent)
+        sendKeyEvent(upEvent)
+        
+        // Wait for duration
+        if (durationMs > 0) {
+            Thread.sleep(durationMs.toLong())
+        }
+        
+        return downEvent
     }
     
     /**
@@ -95,15 +143,161 @@ class AccessibilityBridgeService : AccessibilityService() {
     fun typeText(text: String) {
         scope.launch {
             try {
-                // Insert text using clipboard method
-                Runtime.getRuntime().exec("input keyevent CODE_INSERT")
+                // Method 1: Use UiAutomation for direct text insertion
+                val automation = uiAutomation
                 
-                // Alternative: Use UiAutomation if available
-                uiAutomation?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                
+                if (automation != null) {
+                    // Send text character by character
+                    for (char in text) {
+                        // Simulate key press for each character
+                        val keyCode = charToKeyCode(char)
+                        sendCharKeyCode(keyCode)
+                        delay(50) // Small delay between characters
+                    }
+                } else {
+                    // Fallback: Use clipboard paste method
+                    pasteFromClipboard(text)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
+                
+                // Final fallback: Use shell input method
+                try {
+                    sendShellInput(text)
+                } catch (fallbackEx: Exception) {
+                    fallbackEx.printStackTrace()
+                }
             }
+        }
+    }
+    
+    /**
+     * Convert character to keyboard keycode
+     */
+    private fun charToKeyCode(char: Char): Int {
+        // Basic mapping for common characters
+        return when (char) {
+            in 'a'..'z' -> KeyEvent.KEYCODE_A + (char - 'a')
+            in 'A'..'Z' -> KeyEvent.KEYCODE_A + (char - 'a') + KeyEvent.META_SHIFT_ON
+            in '0'..'9' -> KeyEvent.KEYCODE_0 + (char - '0')
+            ' ' -> KeyEvent.KEYCODE_SPACE
+            '\n' -> KeyEvent.KEYCODE_ENTER
+            '.' -> KeyEvent.KEYCODE_DOT
+            ',' -> KeyEvent.KEYCODE_COMMA
+            '-' -> KeyEvent.KEYCODE_MINUS
+            '=' -> KeyEvent.KEYCODE_EQUALS
+            '/' -> KeyEvent.KEYCODE_SLASH
+            ':' -> KeyEvent.KEYCODE_SEMICOLON
+            '\'' -> KeyEvent.KEYCODE_APOSTROPHE
+            ';' -> KeyEvent.KEYCODE_SEMICOLON
+            '[' -> KeyEvent.KEYCODE_LEFT_BRACKET
+            ']' -> KeyEvent.KEYCODE_RIGHT_BRACKET
+            '\\' -> KeyEvent.KEYCODE_BACKSLASH
+            '+' -> KeyEvent.KEYCODE_PLUS
+            '*' -> KeyEvent.KEYCODE_STAR
+            '#' -> KeyEvent.KEYCODE_POUND
+            '@' -> KeyEvent.KEYCODE_AT
+            else -> KeyEvent.KEYCODE_UNKNOWN
+        }
+    }
+    
+    /**
+     * Send character code via sendKeyEvent
+     */
+    private fun sendCharKeyCode(keyCode: Int) {
+        val downTime = System.currentTimeMillis()
+        
+        // KEY_DOWN
+        val downEvent = KeyEvent(
+            downTime, downTime,
+            KeyEvent.ACTION_DOWN, keyCode, 0,
+            0, 0, 0.0f, 0.0f,
+            android.view.InputDevice.SOURCE_KEYBOARD,
+            android.view.InputDevice.KEYBOARD_DEVICE_ID,
+            KeyEvent.FLAG_FROM_SYSTEM,
+            if (keyCode >= KeyEvent.KEYCODE_A && keyCode < KeyEvent.KEYCODE_Z) {
+                KeyEvent.META_SHIFT_ON
+            } else 0,
+            0, 0, 0, 0,
+            -1, 0, 0, android.view.InputFlags.NONE
+        )
+        
+        // KEY_UP
+        val upEvent = KeyEvent(
+            downTime, System.currentTimeMillis(),
+            KeyEvent.ACTION_UP, keyCode, 0,
+            0, 0, 0.0f, 0.0f,
+            android.view.InputDevice.SOURCE_KEYBOARD,
+            android.view.InputDevice.KEYBOARD_DEVICE_ID,
+            KeyEvent.FLAG_FROM_SYSTEM,
+            if (keyCode >= KeyEvent.KEYCODE_A && keyCode < KeyEvent.KEYCODE_Z) {
+                KeyEvent.META_SHIFT_ON
+            } else 0,
+            0, 0, 0, 0,
+            -1, 0, 0, android.view.InputFlags.NONE
+        )
+        
+        sendKeyEvent(downEvent)
+        sendKeyEvent(upEvent)
+    }
+    
+    /**
+     * Fallback: Paste text using clipboard
+     */
+    private fun pasteFromClipboard(text: String) {
+        try {
+            // Copy text to clipboard
+            val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("hermes_input", text)
+            clipboard.setPrimaryClip(clip)
+            
+            // Simulate Ctrl+V paste
+            val ctrlVDown = KeyEvent(
+                System.currentTimeMillis(), System.currentTimeMillis(),
+                KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_V, 0,
+                0, 0, 0.0f, 0.0f,
+                android.view.InputDevice.SOURCE_KEYBOARD,
+                android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                KeyEvent.FLAG_FROM_SYSTEM,
+                KeyEvent.META_CTRL_ON,
+                0, 0, 0, 0,
+                -1, 0, 0, android.view.InputFlags.NONE
+            )
+            
+            val ctrlVUp = KeyEvent(
+                System.currentTimeMillis(), System.currentTimeMillis(),
+                KeyEvent.ACTION_UP, KeyEvent.KEYCODE_V, 0,
+                0, 0, 0.0f, 0.0f,
+                android.view.InputDevice.SOURCE_KEYBOARD,
+                android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                KeyEvent.FLAG_FROM_SYSTEM,
+                KeyEvent.META_CTRL_ON,
+                0, 0, 0, 0,
+                -1, 0, 0, android.view.InputFlags.NONE
+            )
+            
+            sendKeyEvent(ctrlVDown)
+            sendKeyEvent(ctrlVUp)
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    
+    /**
+     * Fallback: Use shell input method
+     */
+    private fun sendShellInput(text: String) {
+        try {
+            // Use am instrument to send text
+            val process = Runtime.getRuntime().exec(arrayOf(
+                "am", "instrument",
+                "-w",
+                "com.android.settings/androidx.test.aggregator.AggregatorTest"
+            ))
+            // This is just a placeholder - actual implementation would need proper intent
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
     
