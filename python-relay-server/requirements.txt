@@ -1,0 +1,7 @@
+aiohttp>=3.9.0
+pycryptodome>=3.19.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+pyautogui>=0.9.54
+asyncio-throttle>=1.0.2

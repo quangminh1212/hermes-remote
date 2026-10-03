@@ -1,0 +1,91 @@
+# Kotlin files
+*.class
+*.jar
+*.war
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradlew
+!gradlew.bat
+local.properties
+
+# Android Studio
+.idea/
+.DS_Store
+*.iml
+*.hprof
+*.log
+*.pk2
+*.ptf
+captures/
+
+# Generated files
+app/build/
+app/out/
+*/gen/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Build outputs
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables
+.env
+*.env.local
+
+# Keystore files
+*.jks
+*.keystore
+!keystore.properties
+
+# Secrets and credentials
+credentials.xml
+secret.properties
+secrets.yml
+
+# Test coverage
+.coverage
+htmlcov/
+.tox/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# CI/CD
+.cirrus.yml
+.github/
