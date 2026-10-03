@@ -1,0 +1,5 @@
+# Template for local properties - replace ANDROID_HOME with your Android SDK path
+# This file is not tracked by git - create your own local.properties
+
+sdk.dir=C:\\Program Files (x86)\\Android\\android-sdk
+# Or on Linux/Mac: sdk.dir=/Users/yourname/Library/Android/sdk
