@@ -39,11 +39,11 @@
 - **Vòng khép kín CHẠY THẬT (session 2):** nạp config vào SharedPreferences (base_url=`http://10.0.2.2:8642`, key từ `.env`, model `glm-5.3`) → kích hoạt nút **"Git status"** → app gửi *"Cho tôi biết trạng thái git hiện tại của dự án đang làm việc."* → Hermes stream trả lời *"Tôi cần kiểm tra git status thực tế để đưa ra câu trả lời chính xác cho bạn."* → app hiển thị. **app → gateway(8642) → agent → stream về app: OK.**
 
 ## Việc CÒN LẠI (chưa làm)
-1. **Cài `app-release.apk` lên điện thoại Android thật** + quét QR thật đầu-cuối (emulator `aosp_atd` không có camera → chưa test quét QR bằng mắt). APK release đã build + ký sẵn.
+1. **Cài `app-release.apk` lên điện thoại Android thật** + quét QR thật đầu-cuối (emulator `aosp_atd` không có camera → chưa test quét QR bằng mắt). APK release đã build + ký sẵn. **Auto-update cũng cần xác nhận cú bấm "Cập nhật" trên máy thật** (emulator không cài được qua UI).
 2. (Tùy chọn) Publish npm pack lên registry thật.
 3. Kiểm tra `/api/connect` khớp `ConnectPayload.kt` khi có profile Hermes đặt tên (hiện `profile` để trống dùng key top-level `.env`). Profiles đang có: `dalek`, `doraemon`, `heimeringer`.
-4. **SỬA BUG LAYOUT (mới phát hiện):** hàng 4 nút quick-action bị tràn màn hình 1080px — nút **"Git status" bị cắt cụt**, bounds chỉ còn `[1033,1977]-[1080,2072]` (47px, sát mép). Bốn nút: `[33..381] [403..736] [758..1011] [1033..1080]`. Cần cho row wrap hoặc chia đều (bố cục 2x2 / weight) để nút cuối không bị cắt.
-5. Bỏ `"web/"` khỏi `files` trong `npm-pack/package.json` (thư mục rỗng).
+4. ~~SỬA BUG LAYOUT nút "Git status" bị cắt cụt~~ → **ĐÃ SỬA (session 3):** thực ra row cũ đã có `horizontalScroll` (nút cuối cuộn tới được, chỉ là UI dump báo bounds ngoài màn hình — giống bug harness `jks:20`). Đổi sang **`FlowRow`** để nút tự xuống dòng, không nút nào bị khuất. Đã build lại OK.
+5. ~~Bỏ `"web/"` khỏi `files`~~ → **ĐÃ XONG (session 3):** bỏ khỏi `package.json`, xóa luôn thư mục `npm-pack/web/` rỗng. `npm pack --dry-run` = 7 files, 9.3 kB.
 
 ## Ghi chú kỹ thuật quan trọng
 - **ANTI-HANG:** KHÔNG restart gateway/bridge/headless từ trong chat → dùng process nền tách rời + poll kiểm chứng bên ngoài.
