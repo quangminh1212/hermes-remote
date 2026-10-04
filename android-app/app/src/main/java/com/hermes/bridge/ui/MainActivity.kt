@@ -14,6 +14,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -349,18 +351,19 @@ private fun MessageBubble(msg: ChatMessage) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuickActions(
     actions: List<Pair<String, String>>,
     enabled: Boolean,
     onPick: (String) -> Unit,
 ) {
-    Row(
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         actions.forEach { (label, prompt) ->
             AssistChip(
