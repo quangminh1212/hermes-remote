@@ -21,7 +21,7 @@ echo.
 
 REM Step 2: Install dependencies
 echo Step 2/4: Installing Python dependencies...
-cd python-relay-server
+cd py.relay
 
 REM Create virtual environment if it doesn't exist
 if not exist "venv" (

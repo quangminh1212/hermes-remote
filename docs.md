@@ -18,7 +18,7 @@ cd hermes-android-bridge
 
 #### Python Server
 ```bash
-cd python-relay-server
+cd py.relay
 python -m venv venv
 venv\Scripts\activate  # Windows
 # source venv/bin/activate  # Linux/Mac
@@ -181,7 +181,7 @@ Every feature or bug fix should include appropriate tests:
 
 ```bash
 # Run Python tests
-pytest python-relay-server/test_relay_server.py -v
+pytest py.relay/test_relay_server.py -v
 
 # Run Android tests
 cd android-app
@@ -198,7 +198,7 @@ Test coverage targets:
 
 ### Pull Request Process
 
-1. **Update documentation** - Update README, CHANGELOG, or relevant guides
+1. **Update documentation** - Update README, log, or relevant guides
 2. **Run all tests** - Ensure everything passes locally
 3. **Create PR** from feature branch to `main`
 4. **Fill PR template** with:

@@ -35,7 +35,7 @@ fi
 
 # Step 2: Install Python dependencies
 print_info "Step 2/4: Installing Python dependencies..."
-cd "$(dirname "$0")/python-relay-server"
+cd "$(dirname "$0")/py.relay"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
