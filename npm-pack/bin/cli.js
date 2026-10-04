@@ -21,13 +21,14 @@ const tunnel = require("../lib/tunnel");
 const { createServer, listen } = require("../lib/server");
 
 function parseArgs(argv) {
-  const a = { tunnel: true, open: true, port: 0 };
+  const a = { tunnel: true, open: true, port: 0, profile: "" };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--no-tunnel" || t === "--lan") a.tunnel = false;
     else if (t === "--tunnel") a.tunnel = true;
     else if (t === "--no-open") a.open = false;
     else if (t === "--port") a.port = parseInt(argv[++i] || "0", 10);
+    else if (t === "--profile") a.profile = String(argv[++i] || "");
     else if (t === "--help" || t === "-h") a.help = true;
   }
   return a;
@@ -44,6 +45,7 @@ Tuỳ chọn:
   --no-tunnel, --lan   Chỉ dùng địa chỉ LAN, không mở tunnel công khai
   --tunnel             (mặc định) Mở tunnel công khai để dùng từ 4G
   --port <n>           Cổng cho trang webview QR (mặc định: tự chọn)
+  --profile <tên>      Dùng profile Hermes này cho điện thoại (mặc định: key gốc)
   --no-open            Không tự mở trình duyệt
   -h, --help           Hiện trợ giúp
 `);
@@ -108,6 +110,19 @@ async function main() {
   const localUrl = `http://${lanIP()}:${cfg.port}`;
   console.log("  ✔ Địa chỉ LAN:", localUrl);
 
+  // Pick the profile the phone will connect as. Empty = top-level key.
+  let profile = args.profile || "";
+  if (profile && !profiles.includes(profile)) {
+    console.log(
+      "  ⚠ Profile \"" + profile + "\" không có trong danh sách (" +
+        (profiles.length ? profiles.join(", ") : "không có profile nào") + ")."
+    );
+    console.log("    → Dùng key gốc (profile rỗng).");
+    profile = "";
+  } else if (profile) {
+    console.log("  ✔ Profile cho điện thoại:", profile);
+  }
+
   // 2. Make sure the gateway is up.
   await gateway.ensureGateway(cfg.port, (m) => console.log("  … " + m));
 
@@ -137,6 +152,7 @@ async function main() {
     apiKey: cfg.apiKey,
     model: cfg.model,
     profiles,
+    profile,
   });
   const { url: webUrl, port: webPort } = await listen(app, args.port);
 
@@ -152,7 +168,7 @@ async function main() {
     baseUrl: publicUrl,
     fallbackUrl: localUrl,
     apiKey: cfg.apiKey,
-    profile: "",
+    profile,
     model: cfg.model,
     profiles,
   });

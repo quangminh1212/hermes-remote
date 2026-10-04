@@ -25,6 +25,12 @@ test("parseArgs: tunnel on by default, --no-tunnel / --lan disable it", () => {
   assert.equal(parseArgs(["--no-open"]).open, false);
 });
 
+test("parseArgs: --profile picks a profile, defaults to empty (top-level key)", () => {
+  assert.equal(parseArgs([]).profile, "");
+  assert.equal(parseArgs(["--profile", "dalek"]).profile, "dalek");
+  assert.equal(parseArgs(["--profile"]).profile, "");
+});
+
 test("lanIP returns a non-empty IPv4-ish string", () => {
   const ip = lanIP();
   assert.ok(typeof ip === "string" && ip.length >= 7);
@@ -48,6 +54,25 @@ test("webview server: /api/connect returns the connect payload", async () => {
     assert.equal(json.profile, "");
     assert.equal(json.model, "Claude-Fable.3");
     assert.deepEqual(json.profiles, ["dalek"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("webview server: /api/connect passes through the selected profile", async () => {
+  const app = createServer({
+    publicUrl: "https://abc.trycloudflare.com",
+    localUrl: "http://192.168.1.113:8642",
+    apiKey: "secret-key-value",
+    model: "Claude-Fable.3",
+    profiles: ["dalek", "doraemon"],
+    profile: "doraemon",
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const json = await getJson(`http://127.0.0.1:${port}/api/connect`);
+    assert.equal(json.profile, "doraemon");
+    assert.deepEqual(json.profiles, ["dalek", "doraemon"]);
   } finally {
     server.close();
   }

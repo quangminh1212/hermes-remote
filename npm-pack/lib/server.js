@@ -29,7 +29,7 @@ function createServer(opts) {
     baseUrl: opts.publicUrl,
     fallbackUrl: opts.localUrl,
     apiKey: opts.apiKey,
-    profile: "",
+    profile: opts.profile || "",
     model: opts.model || "",
     profiles: opts.profiles || [],
   };
