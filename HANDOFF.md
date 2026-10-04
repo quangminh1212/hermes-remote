@@ -44,6 +44,7 @@
 3. Kiểm tra `/api/connect` khớp `ConnectPayload.kt` khi có profile Hermes đặt tên (hiện `profile` để trống dùng key top-level `.env`). Profiles đang có: `dalek`, `doraemon`, `heimeringer`.
 4. ~~SỬA BUG LAYOUT nút "Git status" bị cắt cụt~~ → **ĐÃ SỬA (session 3):** thực ra row cũ đã có `horizontalScroll` (nút cuối cuộn tới được, chỉ là UI dump báo bounds ngoài màn hình — giống bug harness `jks:20`). Đổi sang **`FlowRow`** để nút tự xuống dòng, không nút nào bị khuất. Đã build lại OK.
 5. ~~Bỏ `"web/"` khỏi `files`~~ → **ĐÃ XONG (session 3):** bỏ khỏi `package.json`, xóa luôn thư mục `npm-pack/web/` rỗng. `npm pack --dry-run` = 7 files, 9.3 kB.
+6. ~~`npm test` treo/không chạy~~ → **ĐÃ SỬA (session 3):** `"test": "node --test test/"` fail `MODULE_NOT_FOUND` trên Node 26 (nó coi arg là module, không phải dir). Đổi sang `node --test test/*.test.js` → **5/5 PASS** (`test/pack.test.js` đã có sẵn từ trước nhưng chưa từng chạy được).
 
 ## Ghi chú kỹ thuật quan trọng
 - **ANTI-HANG:** KHÔNG restart gateway/bridge/headless từ trong chat → dùng process nền tách rời + poll kiểm chứng bên ngoài.
