@@ -1,0 +1,41 @@
+{
+  "name": "hermes-remote",
+  "version": "1.0.0",
+  "description": "One-command bridge: starts the Hermes gateway, opens a public tunnel, and shows a QR code your Android phone scans to connect instantly.",
+  "keywords": [
+    "hermes",
+    "android",
+    "remote",
+    "tunnel",
+    "qr",
+    "gateway",
+    "chat"
+  ],
+  "license": "MIT",
+  "bin": {
+    "hermes-remote": "bin/cli.js"
+  },
+  "main": "lib/server.js",
+  "files": [
+    "bin/",
+    "lib/",
+    "web/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ]
+}
