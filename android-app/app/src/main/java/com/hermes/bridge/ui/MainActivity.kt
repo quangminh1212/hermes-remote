@@ -1,231 +1,156 @@
 package com.hermes.bridge.ui
 
-import android.app.Activity
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.hermes.bridge.service.WebSocketConnectionService
-import com.hermes.bridge.R
+import com.hermes.bridge.websocket.ConnectionManager
 
-class MainActivity : AppCompatActivity() {
-    
-    private val viewModel: MainViewModel = MainViewModel()
-    
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         setContent {
             MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    HomeScreen(
-                        connectionStatus = viewModel.connectionState,
-                        serverUrl = viewModel.serverUrl.value,
-                        pairingCode = viewModel.pairingCode,
-                        onServerUrlChange = viewModel::updateServerUrl,
-                        onPairingCodeChange = { code: String -> viewModel.updatePairingCode(code) },
-                        onStartConnection = ::startConnectionService,
-                        onCheckAccessibility = ::openAccessibilitySettings
-                    )
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(viewModel, ::openAccessibilitySettings, ::openBatterySettings)
                 }
             }
         }
     }
-    
-    private fun startConnectionService() {
-        if (viewModel.isValidConfig()) {
-            val intent = Intent(this, WebSocketConnectionService::class.java).apply {
-                putExtra("SERVER_URL", viewModel.serverUrl.value)
-                putExtra("PAIRING_CODE", viewModel.pairingCode)
-            }
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            
-            Toast.makeText(this, "Connecting to server...", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Invalid configuration", Toast.LENGTH_SHORT).show()
-        }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshAccessibilityStatus()
     }
-    
+
     private fun openAccessibilitySettings() {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        startActivity(intent)
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openBatterySettings() {
+        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    connectionStatus: ConnectionStatus,
-    serverUrl: String,
-    pairingCode: String?,
-    onServerUrlChange: (String) -> Unit,
-    onPairingCodeChange: (String) -> Unit,
-    onStartConnection: () -> Unit,
-    onCheckAccessibility: () -> Unit
+private fun MainScreen(
+    viewModel: MainViewModel,
+    onOpenAccessibility: () -> Unit,
+    onOpenBattery: () -> Unit,
 ) {
-    var showInstructions by remember { mutableStateOf(false) }
-    
+    val state by viewModel.uiState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "Hermes Bridge",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        
-        Text(
-            text = "Connect your Android device to Hermes Agent",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-        )
-        
-        // Status indicator
-        Box(
-            modifier = Modifier
-                .size(16.dp)
-                .background(
-                    when (connectionStatus) {
-                        ConnectionStatus.Connected -> Color.Green
-                        ConnectionStatus.Connecting -> Color.Yellow
-                        else -> Color.Red
-                    },
-                    shape = RoundedCornerShape(8.dp)
-                ),
-            contentAlignment = Alignment.Center
-        )
-        
-        Text(
-            text = when (connectionStatus) {
-                ConnectionStatus.Connected -> "✓ Connected"
-                ConnectionStatus.Connecting -> "⏳ Connecting..."
-                ConnectionStatus.Disconnected -> "✗ Disconnected"
-            },
-            style = MaterialTheme.typography.bodyMedium
-        )
-        
-        // Server URL input
+        Text("Hermes Bridge", style = MaterialTheme.typography.headlineMedium)
+        StatusCard(state.connectionState, state.accessibilityEnabled)
+
         OutlinedTextField(
-            value = serverUrl,
-            onValueChange = onServerUrlChange,
+            value = state.serverUrl,
+            onValueChange = viewModel::onServerUrlChange,
             label = { Text("Server WebSocket URL") },
-            placeholder = { Text("ws://your-server-ip:8765/ws") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
         )
-        
-        // Pairing code display (if paired)
-        if (pairingCode != null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Pairing Code",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    
-                    Text(
-                        text = pairingCode,
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(top = 8.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    
-                    Button(
-                        onClick = { showInstructions = !showInstructions },
-                        modifier = Modifier.padding(top = 12.dp)
-                    ) {
-                        Text("Show Instructions")
-                    }
-                }
-            }
-        }
-        
-        // Action buttons
-        Column(
+        OutlinedTextField(
+            value = state.pairingCode,
+            onValueChange = viewModel::onPairingCodeChange,
+            label = { Text("Pairing Code") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(
-                onClick = onStartConnection,
-                enabled = connectionStatus == ConnectionStatus.Disconnected,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Start Connection")
-            }
-            
-            Button(
-                onClick = onCheckAccessibility,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Enable Accessibility Service")
-            }
+        )
+
+        Row2(
+            left = {
+                Button(
+                    onClick = {
+                        WebSocketConnectionService.start(context, state.serverUrl, state.pairingCode)
+                    },
+                    enabled = state.connectionState == ConnectionManager.State.DISCONNECTED,
+                ) { Text("Start") }
+            },
+            right = {
+                OutlinedButton(
+                    onClick = { WebSocketConnectionService.stop(context) },
+                    enabled = state.connectionState != ConnectionManager.State.DISCONNECTED,
+                ) { Text("Stop") }
+            },
+        )
+
+        Button(onClick = onOpenAccessibility, modifier = Modifier.fillMaxWidth()) {
+            Text("Enable Accessibility Service")
         }
-        
-        // Instructions card
-        if (showInstructions && pairingCode != null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Setup Instructions:",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    Text(
-                        text = "1. On your PC, run the Python relay server\n" +
-                             "2. Note the pairing code shown above\n" +
-                             "3. In Hermes Agent tools, call:\n   android_pair_device(display_name=\"My Phone\")\n" +
-                             "4. Enter the pairing code in the Android app\n" +
-                             "5. Start connection and enjoy!",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
+        OutlinedButton(onClick = onOpenBattery, modifier = Modifier.fillMaxWidth()) {
+            Text("Disable Battery Optimization")
         }
     }
 }
 
-sealed class ConnectionStatus {
-    object Disconnected : ConnectionStatus()
-    object Connecting : ConnectionStatus()
-    object Connected : ConnectionStatus()
+@Composable
+private fun StatusCard(
+    connectionState: ConnectionManager.State,
+    accessibilityEnabled: Boolean,
+) {
+    val (label, color) = when (connectionState) {
+        ConnectionManager.State.CONNECTED -> "Connected" to Color(0xFF2E7D32)
+        ConnectionManager.State.CONNECTING -> "Connecting…" to Color(0xFFF9A825)
+        ConnectionManager.State.ERROR -> "Error" to Color(0xFFC62828)
+        ConnectionManager.State.DISCONNECTED -> "Disconnected" to Color(0xFF616161)
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Connection: $label", color = color, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Accessibility: " + if (accessibilityEnabled) "Enabled" else "Disabled",
+                color = if (accessibilityEnabled) Color(0xFF2E7D32) else Color(0xFFC62828),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Row2(left: @Composable () -> Unit, right: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        left()
+        right()
+    }
 }

@@ -101,7 +101,3 @@ tmp/
 temp/
 *.tmp
 *.bak
-
-# CI/CD
-.cirrus.yml
-.github/

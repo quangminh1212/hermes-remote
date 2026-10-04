@@ -3,298 +3,194 @@ package com.hermes.bridge.websocket
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import kotlinx.coroutines.*
-import okhttp3.*
-import okio.ByteString
-import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
+import com.google.gson.JsonParser
+import com.hermes.bridge.protocol.CommandRequest
+import com.hermes.bridge.protocol.CommandResult
+import com.hermes.bridge.protocol.MessageType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * WebSocket client for maintaining persistent connection to Hermes Agent relay server
+ * Maintains a resilient WebSocket connection to the Hermes relay server.
+ *
+ * - Authenticates with a pairing code.
+ * - Dispatches inbound `command.execute` frames to [commandHandler] off the reader thread.
+ * - Reconnects with exponential backoff.
  */
-class WebSocketClient {
-    
-    companion object {
-        private const val TAG = "WebSocketClient"
+class WebSocketClient(
+    private val serverUrl: String,
+    private val pairingCode: String,
+    private val commandHandler: suspend (CommandRequest) -> CommandResult,
+    private val onStateChanged: (ConnectionState) -> Unit,
+) {
+    enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, ERROR }
+
+    private companion object {
+        const val TAG = "WebSocketClient"
+        const val BASE_BACKOFF_MS = 1_000L
+        const val MAX_BACKOFF_MS = 30_000L
+        const val PING_INTERVAL_S = 20L
     }
-    
-    private var webSocket: WebSocket? = null
-    private var isConnecting = false
-    private var isConnected = false
-    
-    private val requestIds = ConcurrentHashMap<String, CompletableJob>()
-    private val responseCallbacks = mutableMapOf<String, (JsonObject) -> Unit>()
-    
+
     private val gson = Gson()
-    private lateinit var baseUrl: String
-    private lateinit var pairingCode: String
-    
-    private val dispatcher = Dispatchers.IO
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    
-    fun connect(serverUrl: String, pairingCode: String) {
-        this.baseUrl = serverUrl
-        this.pairingCode = pairingCode
-        
-        scope.launch {
-            if (isConnecting || isConnected) {
-                Log.w(TAG, "Already connecting or connected, ignoring duplicate call")
-                return@launch
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val running = AtomicBoolean(false)
+    private val outbound = Channel<String>(Channel.UNLIMITED)
+
+    private val httpClient = OkHttpClient.Builder()
+        .pingInterval(PING_INTERVAL_S, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS) // streaming
+        .build()
+
+    @Volatile private var webSocket: WebSocket? = null
+
+    fun connect() {
+        if (!running.compareAndSet(false, true)) return
+        scope.launch { runLoop() }
+    }
+
+    fun disconnect() {
+        running.set(false)
+        webSocket?.close(1000, "client closing")
+        webSocket = null
+        scope.cancel()
+        onStateChanged(ConnectionState.DISCONNECTED)
+    }
+
+    fun send(message: String): Boolean = outbound.trySend(message).isSuccess
+
+    private suspend fun runLoop() {
+        var attempt = 0
+        while (running.get()) {
+            onStateChanged(ConnectionState.CONNECTING)
+            val connected = openSocket()
+            if (!connected) {
+                attempt++
+                onStateChanged(ConnectionState.ERROR)
+                delay(backoffFor(attempt))
+                continue
             }
-            
-            try {
-                isConnecting = true
-                
-                val request = Request.Builder()
-                    .url(serverUrl)
-                    .build()
-                
-                val client = OkHttpClient.Builder()
-                    .pingInterval(java.time.Duration.ofSeconds(30))
-                    .build()
-                
-                webSocket = client.newWebSocket(request, object : WebSocketListener() {
-                    override fun onOpen(webSocket: WebSocket, response: Response) {
-                        Log.i(TAG, "WebSocket connected successfully")
-                        
-                        // Authenticate immediately
-                        authenticate(pairingCode)
-                        
-                        isConnected = true
-                        isConnecting = false
-                    }
-                    
-                    override fun onMessage(webSocket: WebSocket, text: String) {
-                        Log.d(TAG, "Received message: $text")
-                        
-                        try {
-                            handleTextMessage(text)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error handling message", e)
-                        }
-                    }
-                    
-                    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                        Log.d(TAG, "Received binary message")
-                    }
-                    
-                    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                        Log.i(TAG, "WebSocket closing: $code / $reason")
-                        webSocket.close(1000, null)
-                        isConnected = false
-                    }
-                    
-                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                        Log.e(TAG, "WebSocket error", t)
-                        
-                        isConnected = false
-                        isConnecting = false
-                        
-                        // Attempt reconnection
-                        scheduleReconnection()
-                    }
-                    
-                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        Log.i(TAG, "WebSocket closed: $code / $reason")
-                        isConnected = false
-                        isConnecting = false
-                    }
-                })
-                
-                Log.i(TAG, "WebSocket connection initiated")
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create WebSocket", e)
-                isConnecting = false
-            }
+            attempt = 0
+            drainOutbound()
+            if (running.get()) delay(1_000) // brief pause before reconnect
+        }
+        onStateChanged(ConnectionState.DISCONNECTED)
+    }
+
+    private suspend fun openSocket(): Boolean {
+        val terminated = Channel<Boolean>(1)
+        return try {
+            val request = Request.Builder().url(serverUrl).build()
+            webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(ws: WebSocket, response: Response) {
+                    Log.i(TAG, "WebSocket opened")
+                    onStateChanged(ConnectionState.CONNECTED)
+                    sendAuth()
+                }
+
+                override fun onMessage(ws: WebSocket, text: String) {
+                    handleIncoming(text)
+                }
+
+                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    Log.e(TAG, "WebSocket failure: ${t.message}")
+                    terminated.trySend(false)
+                }
+
+                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    Log.i(TAG, "WebSocket closed: $code $reason")
+                    terminated.trySend(true)
+                }
+            })
+            terminated.receive()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "openSocket failed", e)
+            false
         }
     }
-    
-    private fun authenticate(pairingCode: String) {
-        val authRequest = JsonObject().apply {
-            addProperty("type", "auth.request")
+
+    private fun sendAuth() {
+        val payload = JsonObject().apply {
+            addProperty("type", MessageType.AUTH_REQUEST)
             addProperty("pairing_code", pairingCode)
         }
-        
-        send(authRequest.toString())
+        send(gson.toJson(payload))
     }
-    
-    private fun handleTextMessage(jsonString: String) {
-        val json = gson.fromJson(jsonString, JsonObject::class.java)
-        val messageType = json.get("type")?.asString ?: "unknown"
-        
-        when (messageType) {
-            "auth.grant" -> {
-                handleAuthGrant(json)
-            }
-            
-            "auth.reject" -> {
-                Log.e(TAG, "Authentication rejected: ${json.get("reason")}")
-            }
-            
-            "command.execute" -> {
-                handleCommandExecute(json)
-            }
-            
-            else -> {
-                Log.w(TAG, "Unknown message type: $messageType")
-            }
-        }
-    }
-    
-    private fun handleAuthGrant(json: JsonObject) {
-        Log.i(TAG, "Authentication successful!")
-        
-        val sessionToken = json.get("session_token")?.asString
-        val permissions = json.get("permissions")?.asJsonArray?.map { it.asString } ?: emptyList()
-        
-        Log.d(TAG, "Session token: $sessionToken")
-        Log.d(TAG, "Permissions granted: $permissions")
-    }
-    
-    private fun handleCommandExecute(json: JsonObject) {
-        val requestId = json.get("request_id")?.asString ?: run {
-            Log.e(TAG, "Missing request_id in command")
-            return
-        }
-        
-        val action = json.get("action")?.asString ?: run {
-            Log.e(TAG, "Missing action in command")
-            return
-        }
-        
-        val params = json.get("params")?.asJsonObject ?: JsonObject()
-        val timeoutMs = json.get("timeout_ms")?.asInt ?: 5000
-        
-        Log.i(TAG, "Command received: $action (id: $requestId)")
-        
-        // Schedule command execution with timeout
-        scope.launch {
-            try {
-                val result = executeCommand(action, params)
-                
-                completeCommand(requestId, true, result)
-            } catch (e: Exception) {
-                Log.e(TAG, "Command execution failed: $action", e)
-                failCommand(requestId, e.message ?: "Unknown error")
-            }
-        }
-        
-        // Set timeout
-        scope.launch {
-            delay(timeoutMs.toLong())
-            failCommand(requestId, "Command timeout exceeded")
-        }
-    }
-    
-    private suspend fun executeCommand(action: String, params: JsonObject): Any {
-        return when (action) {
-            "tap" -> {
-                val x = params.get("x")?.asDouble ?: 0.0
-                val y = params.get("y")?.asDouble ?: 0.0
-                val durationMs = params.get("duration_ms")?.asInt ?: 100
-                
-                AccessibilityBridgeService.instance?.executeTap(x.toFloat(), y.toFloat(), durationMs)
-                mapOf("success" to true, "coordinates" to "$x,$y")
-            }
-            
-            "type_text" -> {
-                val text = params.get("text")?.asString ?: ""
-                
-                AccessibilityBridgeService.instance?.typeText(text)
-                mapOf("success" to true, "text_length" to text.length)
-            }
-            
-            "swipe" -> {
-                val startX = params.get("start_x")?.asDouble ?: 0.0
-                val startY = params.get("start_y")?.asDouble ?: 0.0
-                val endX = params.get("end_x")?.asDouble ?: 0.0
-                val endY = params.get("end_y")?.asDouble ?: 0.0
-                val durationMs = params.get("duration_ms")?.asInt ?: 300
-                
-                AccessibilityBridgeService.instance?.performSwipe(
-                    startX.toFloat(), startY.toFloat(),
-                    endX.toFloat(), endY.toFloat(),
-                    durationMs
-                )
-                mapOf("success" to true, "gesture" to "swipe")
-            }
-            
-            "get_screenshot" -> {
-                val screenshot = AccessibilityBridgeService.instance?.getScreenshot()
-                mapOf("success" to screenshot != null, "screenshot_base64" to screenshot)
-            }
-            
-            "read_ui_tree" -> {
-                val depthLimit = params.get("depth_limit")?.asInt ?: 10
-                
-                val uiTree = AccessibilityBridgeService.instance?.readUiTree(depthLimit)
-                mapOf("success" to uiTree != null, "ui_tree_json" to uiTree?.toString())
-            }
-            
-            "launch_app" -> {
-                val packageName = params.get("package_name")?.asString ?: ""
-                
-                AccessibilityBridgeService.instance?.launchApp(packageName)
-                mapOf("success" to true, "package" to packageName)
-            }
-            
-            else -> {
-                throw IllegalArgumentException("Unknown action: $action")
-            }
-        }
-    }
-    
-    private fun completeCommand(requestId: String, success: Boolean, result: Any) {
-        scope.launch {
-            val response = JsonObject().apply {
-                addProperty("type", "command.complete")
-                addProperty("request_id", requestId)
-                addProperty("success", success)
-                add("result", gson.toJsonTree(result))
-            }
-            
-            send(response.toString())
-        }
-    }
-    
-    private fun failCommand(requestId: String, error: String) {
-        scope.launch {
-            val response = JsonObject().apply {
-                addProperty("type", "command.error")
-                addProperty("request_id", requestId)
-                addProperty("error", error)
-            }
-            
-            send(response.toString())
-        }
-    }
-    
-    fun sendCommandComplete(requestId: String, success: Boolean, result: Any?) {
-        completeCommand(requestId, success, result)
-    }
-    
-    fun disconnect() {
-        webSocket?.close(1000, "Client disconnecting")
-        webSocket = null
-        isConnected = false
-        scope.cancel()
-    }
-    
-    private fun send(message: String) {
-        scope.launch {
+
+    private suspend fun drainOutbound() {
+        while (running.get()) {
+            val message = outbound.tryReceive().getOrNull() ?: break
             webSocket?.send(message)
         }
     }
-    
-    private fun scheduleReconnection() {
-        scope.launch {
-            Log.i(TAG, "Scheduling reconnection in 5 seconds...")
-            delay(5000)
-            
-            if (!isConnected) {
-                connect(baseUrl, pairingCode)
-            }
+
+    private fun handleIncoming(text: String) {
+        val root = try {
+            JsonParser.parseString(text).asJsonObject
+        } catch (e: Exception) {
+            Log.w(TAG, "Malformed frame: $text")
+            return
         }
+        when (root.get("type")?.asString) {
+            MessageType.AUTH_GRANT -> Log.i(TAG, "Authenticated with server")
+            MessageType.AUTH_REJECT -> {
+                Log.e(TAG, "Auth rejected: ${root.get("reason")?.asString}")
+                onStateChanged(ConnectionState.ERROR)
+            }
+            MessageType.COMMAND_EXECUTE -> {
+                val request = parseCommand(root) ?: return
+                scope.launch {
+                    val result = withContext(Dispatchers.Default) { commandHandler(request) }
+                    sendResult(request.requestId, result)
+                }
+            }
+            else -> Log.d(TAG, "Ignoring frame type ${root.get("type")}")
+        }
+    }
+
+    private fun parseCommand(root: JsonObject): CommandRequest? {
+        return try {
+            val action = root.get("action")?.asString ?: return null
+            CommandRequest(
+                requestId = root.get("request_id")?.asString ?: "",
+                action = action,
+                params = root.getAsJsonObject("params") ?: JsonObject(),
+                timeoutMs = root.get("timeout_ms")?.asLong ?: 30_000L,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Bad command frame", e)
+            null
+        }
+    }
+
+    private fun sendResult(requestId: String, result: CommandResult) {
+        val payload = JsonObject().apply {
+            addProperty("type", if (result.success) MessageType.COMMAND_COMPLETE else MessageType.COMMAND_ERROR)
+            addProperty("request_id", requestId)
+            addProperty("success", result.success)
+            result.error?.let { addProperty("error", it) }
+            add("result", gson.toJsonTree(result.payload))
+        }
+        send(gson.toJson(payload))
+    }
+
+    private fun backoffFor(attempt: Int): Long {
+        val exp = BASE_BACKOFF_MS shl (attempt - 1).coerceIn(0, 5)
+        return exp.coerceAtMost(MAX_BACKOFF_MS)
     }
 }

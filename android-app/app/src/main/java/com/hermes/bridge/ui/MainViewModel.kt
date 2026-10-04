@@ -1,41 +1,63 @@
 package com.hermes.bridge.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.provider.Settings
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hermes.bridge.websocket.ConnectionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel() {
-    
-    private val _connectionState = MutableStateFlow(ConnectionStatus.Disconnected)
-    val connectionState: StateFlow<ConnectionStatus> = _connectionState.asStateFlow()
-    
-    private val _serverUrl = MutableStateFlow("ws://localhost:8765/ws")
-    val serverUrl = _serverUrl.asStateFlow()
-    
-    private val _pairingCode = MutableStateFlow<String?>(null)
-    val pairingCode: String? get() = _pairingCode.value
-    
-    fun updateServerUrl(newUrl: String) {
-        _serverUrl.value = newUrl
+/** UI state for the main screen. */
+data class MainUiState(
+    val serverUrl: String = DEFAULT_SERVER_URL,
+    val pairingCode: String = "",
+    val connectionState: ConnectionManager.State = ConnectionManager.State.DISCONNECTED,
+    val accessibilityEnabled: Boolean = false,
+) {
+    companion object {
+        const val DEFAULT_SERVER_URL = "ws://192.168.1.100:8765"
     }
-    
-    fun updatePairingCode(code: String?) {
-        if (code == null || code.isEmpty()) {
-            _pairingCode.value = null
-        } else {
-            _pairingCode.value = code
+}
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val _uiState = MutableStateFlow(MainUiState())
+    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            ConnectionManager.state.collect { state ->
+                _uiState.value = _uiState.value.copy(connectionState = state)
+            }
         }
     }
-    
-    fun isValidConfig(): Boolean {
-        val url = serverUrl.value.trim()
-        
-        if (url.isEmpty()) return false
-        
-        // Basic URL validation
-        return url.startsWith("ws://") || url.startsWith("wss://")
+
+    fun onServerUrlChange(value: String) {
+        _uiState.value = _uiState.value.copy(serverUrl = value)
+    }
+
+    fun onPairingCodeChange(value: String) {
+        _uiState.value = _uiState.value.copy(pairingCode = value)
+    }
+
+    fun refreshAccessibilityStatus() {
+        val enabled = isAccessibilityServiceEnabled()
+        _uiState.value = _uiState.value.copy(accessibilityEnabled = enabled)
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val context = getApplication<Application>()
+        val expected = "${context.packageName}/${SERVICE_CLASS}"
+        val enabled = Settings.Secure.getString(
+            context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ) ?: return false
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
+    companion object {
+        const val SERVICE_CLASS = "com.hermes.bridge.service.AccessibilityBridgeService"
     }
 }

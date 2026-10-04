@@ -1,44 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network Permissions -->
+    <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <!-- Foreground Service for persistent connection -->
+
+    <!-- Foreground service to keep the WebSocket alive -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    
-    <!-- Accessibility Service -->
-    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
-    
-    <!-- Notification permission for foreground service -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    
+
     <!-- Battery optimization exemption for continuous operation -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    
-    <!-- Overlay permission (optional, for UI interaction) -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" 
-        tools:ignore="ProtectedPermissions" />
 
     <application
         android:name=".HermesBridgeApplication"
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.HermesBridge"
-        tools:targetApi="31">
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.HermesBridge">
 
-        <!-- Main Activity with Compose UI -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:label="@string/app_name"
             android:theme="@style/Theme.HermesBridge">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -46,11 +34,12 @@
             </intent-filter>
         </activity>
 
-        <!-- Accessibility Service -->
+        <!-- Accessibility service: performs gestures, reads UI tree -->
         <service
             android:name=".service.AccessibilityBridgeService"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.service.accessibility.AccessibilityService" />
             </intent-filter>
@@ -59,12 +48,11 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Foreground Service for WebSocket connection -->
+        <!-- Foreground service: holds the WebSocket connection -->
         <service
             android:name=".service.WebSocketConnectionService"
             android:exported="false"
-            android:foregroundServiceType="dataSync">
-        </service>
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

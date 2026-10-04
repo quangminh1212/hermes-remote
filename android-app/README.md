@@ -1,224 +1,65 @@
-# 📱 Hermes Android Bridge App
+# Hermes Bridge — Android
 
-Ứng dụng Android kết nối với Hermé Agent Server trên PC qua WebSocket, cung cấp khả năng điều khiển device Android từ xa thông qua Accessibility Service.
+Android client for the Hermes Agent. Connects to the Python relay server over
+WebSocket and executes device interaction commands (tap, swipe, text input,
+UI-tree reading, screenshots) through a real `AccessibilityService`.
 
-## ✨ Tính năng chính
-
-### 1. **Kết nối WebSocket bền vững**
-- Duy trì kết nối liên tục với Python relay server
-- Tự động reconnect khi mất kết nối
-- Authentication bằng pairing code
-
-### 2. **Accessibility Bridge**
-- Thực hiện các thao tác touch/swipe ở vị trí cụ thể
-- Nhập văn bản vào input field
-- Đọc UI tree của màn hình
-- Chụp screenshot (base64 encoded)
-- Phím cứng (Home, Back, Recent Apps, Volume)
-- Điều hướng cuộn trang
-- Khởi chạy ứng dụng khác
-
-### 3. **Foreground Service**
-- Dịch vụ chạy nền để duy trì kết nối
-- Notification hiển thị trạng thái
-- Tự động restart khi cần thiết
-
-## 🏗️ Kiến trúc
+## Architecture
 
 ```
-MainActivity
-    ├── MainViewModel (State management)
-    └── HomeScreen UI
-    
-WebSocketConnectionService (Foreground Service)
-    └── WebSocketClient
-        └── Handles WebSocket connection
-        
-AccessibilityBridgeService
-    └── Executes commands received from server
-        ├── Tap at coordinates
-        ├── Type text
-        ├── Swipe gestures
-        ├── Read UI tree
-        ├── Get screenshot
-        ├── Device controls
+app/src/main/java/com/hermes/bridge/
+├── HermesBridgeApplication.kt     Application entry point
+├── protocol/                      Wire protocol (shared with the Python server)
+│   ├── MessageType.kt             Message + action name constants
+│   └── CommandRequest.kt          Inbound command DTO + typed param accessors
+├── service/
+│   ├── AccessibilityBridgeService.kt   Real gestures via dispatchGesture,
+│   │                                   text via ACTION_SET_TEXT, screenshot,
+│   │                                   UI tree, app launch
+│   ├── CommandExecutor.kt              Maps protocol actions -> service calls
+│   └── WebSocketConnectionService.kt   Foreground service holding the socket
+├── websocket/
+│   ├── WebSocketClient.kt         OkHttp WS, auth, reconnect w/ backoff
+│   └── ConnectionManager.kt       Process-wide singleton + observable state
+└── ui/
+    ├── MainActivity.kt            Compose screen
+    └── MainViewModel.kt           UI state + accessibility status
 ```
 
-## 🛠️ Build & Setup
+## Build
 
-### Yêu cầu
-- **Android Studio Arctic Fox hoặc mới hơn**
-- **JDK 17+**
-- **Android SDK API 34** (compileSdk), minSdk 26
-
-### Các bước setup
-
-#### 1. Clone repository
 ```bash
 cd android-app
+./gradlew assembleDebug      # Linux/macOS
+gradlew.bat assembleDebug    # Windows
 ```
 
-#### 2. Mở trong Android Studio
-- File → Open → Chọn thư mục `android-app`
-- Đợi Gradle sync hoàn tất
+Requires JDK 17 and Android SDK 34. Create `local.properties` from
+`local.properties.template` and point `sdk.dir` at your Android SDK:
 
-#### 3. Build Debug
+```properties
+sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+```
+
+## Test
+
 ```bash
-./gradlew assembleDebug
+./gradlew test                   # unit tests
+./gradlew connectedAndroidTest   # instrumented (device/emulator)
 ```
 
-hoặc trong Android Studio:
-- Build → Make Project
-- Build → Build Bundle(s) / APK(s) → Build APK(s)
+## Usage
 
-#### 4. Deploy lên emulator/device
-```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
+1. Install the app, open it.
+2. Tap **Enable Accessibility Service** and enable *Hermes Bridge*.
+3. (Recommended) Tap **Disable Battery Optimization**.
+4. Enter the relay server WebSocket URL and the pairing code.
+5. Tap **Start**. Status turns green when connected.
 
-## 🔧 Configuration
+Screenshots require Android 11 (API 30) or newer.
 
-### Server URL
-Mặc định: `ws://localhost:8765/ws`
+## Protocol
 
-Để kết nối với server khác, thay đổi URL trong app UI hoặc edit constant:
-
-```kotlin
-// In WebSocketConnectionService.kt
-val defaultUrl = "ws://your-server-ip:8765/ws"
-```
-
-### Pairing Code
-Được sinh ra bởi Python server và truyền đến Android thông qua:
-1. Gọi function `android_pair_device(display_name)` từ Hermes Agent tools
-2. Hiển thị pairing code trên UI Android
-3. Xác thực khi start connection
-
-## 🚀 Sử dụng
-
-### Trên Android App
-1. **Enable Accessibility Service**:
-   - Click "Enable Accessibility Service" button
-   - Đi đến Settings → Accessibility
-   - Bật toggle cho "Hermes Bridge"
-   - Confirm prompt
-
-2. **Configure Connection**:
-   - Nhập WebSocket URL (nếu không dùng localhost)
-   - Nếu có pairing code, nhập vào trường Pairing Code
-
-3. **Start Connection**:
-   - Click "Start Connection"
-   - Wait for notification "Hermes Bridge Connected"
-   - Check status indicator (đỏ/vàng/xanh)
-
-### Trên Python Relay Server
-```python
-# Example in Python
-from hermes_relay_server import HermesServer
-
-server = HermesServer()
-
-# Register a device
-device_id = server.android_pair_device("My Phone")
-print(f"Pairing code: {device_id}")
-
-# Send commands to device
-await server.android_execute_command(device_id, {
-    "action": "tap",
-    "params": {"x": 500, "y": 800}
-})
-```
-
-## 📝 Commands Supported
-
-### Input Actions
-- **tap**: `{x, y, duration_ms}`
-- **type_text**: `{text: String}`
-- **swipe**: `{start_x, start_y, end_x, end_y, duration_ms}`
-
-### UI Operations
-- **get_screenshot**: Returns base64 PNG
-- **read_ui_tree**: Returns JSON tree structure `{depth_limit: Int}`
-- **launch_app**: `{package_name: String}`
-
-### System Controls
-- **press_key**: Hardware key code
-- **press_home**, **press_back**, **press_recent_apps**
-- **press_volume_up**, **press_volume_down**, **press_mute**
-- **scroll**: "up", "down", "left", "right"
-- **clear_clipboard**
-- **get_device_info**: Returns device specifications
-
-## 🔒 Permissions Required
-
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-<uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
-<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-```
-
-## 🐛 Troubleshooting
-
-### Connection issues
-1. Ensure Python relay server is running on port 8765
-2. Check firewall settings allow WebSocket connections
-3. Verify pairing code matches between server and device
-
-### Accessibility Service not working
-1. Go to Settings → Accessibility
-2. Find "Hermes Bridge" in list
-3. Enable the toggle
-4. Restart app if needed
-
-### Screenshot returns null
-The current implementation creates an empty bitmap. To capture actual screen content:
-1. Add `android.permission.CAPTURE_VIDEO_OUTPUT` permission
-2. Use MediaProjection API with user consent
-3. Or use ADB shell: `adb exec-out screencap -p`
-
-### Auto-reconnect fails
-Check network stability and ensure server supports persistent WebSocket connections with ping/pong heartbeats.
-
-## 📦 Dependencies
-
-```kotlin
-// Compose
-implementation("androidx.compose.ui:ui")
-implementation("androidx.compose.material3:material3")
-
-// Network
-implementation("com.squareup.okhttp3:okhttp:4.12.0")
-implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-
-// Serialization
-implementation("com.squareup.retrofit2:retrofit:2.9.0")
-implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-
-// Coroutines
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-```
-
-## 🔄 Next Steps
-
-- [ ] Implement proper MediaProjection screenshot capture
-- [ ] Add keyboard overlay for easier text input
-- [ ] Support multi-touch gestures
-- [ ] Add gesture recording/replay feature
-- [ ] Implement command queuing and rate limiting
-- [ ] Add diagnostic logging dashboard
-
-## 📄 License
-
-MIT License - feel free to use and modify as needed.
-
-## 👥 Contributing
-
-Contributions welcome! Please submit PRs or report issues via GitHub.
-
----
-
-**Developer Notes**: This app requires root access or special permissions for full functionality. Some features like screenshot capture may require additional permissions or system-level access.
+See `protocol/` and the server's `relay_server.py`. Device→server frames are
+`auth.request`, `command.complete`, `command.error`; server→device frames are
+`auth.grant`, `auth.reject`, `command.execute`.
