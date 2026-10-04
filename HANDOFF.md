@@ -23,6 +23,15 @@
 - **Test:** `gradlew assembleRelease` + `assembleDebug` + `testDebugUnitTest` → **BUILD SUCCESSFUL**, 25/25 test PASS. Env build: `JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot` — truyền dạng đường dẫn **Windows**, KHÔNG dùng `/c/...`.
 - **Config app lưu ở:** SharedPreferences **`hermes_bridge_config`** (`base_url`, `api_key`, `profile`, `model`) — xem `data/ConfigStore.kt`. Default base URL `http://192.168.1.113:8642`, default model `glm-5.3`.
 
+### 3. Auto-update APK (tự lên bản) — MỚI
+- **Cơ chế:** app tự kiểm tra GitHub Releases khi mở app (rate-limit **6h/lần**, lưu mốc ở SharedPreferences `hermes_bridge_update`). Nếu có bản `versionCode` lớn hơn → hiện **banner "Có bản cập nhật X"** ở đầu màn hình chat với 2 nút *Để sau* / *Cập nhật*.
+- **Cách áp dụng:** bấm *Cập nhật* → tải APK vào `cacheDir/updates/` (hiện thanh tiến trình %) → mở trình cài hệ thống qua **FileProvider** `com.hermes.bridge.fileprovider` (paths ở `res/xml/file_paths.xml`). Cần quyền **`REQUEST_INSTALL_PACKAGES`** + người dùng bật *"Cho phép cài từ nguồn này"* (app tự mở màn Settings tương ứng nếu thiếu).
+- **Nguồn:** `UpdateSource.kt` trỏ `quangminh1212/hermes-remote` (PUBLIC — repo private thì GitHub API 404 vì app không có token).
+- **⚠️ QUY ƯỚC ĐÁNH VERSION (BẮT BUỘC):** GitHub KHÔNG gửi `versionCode` → phải nhét vào **tag** dạng **`v<versionName>+<versionCode>`**, ví dụ **`v1.0.0+2`**. App parse `+<số>` từ tag (fallback: tên asset `hermes-<versionName>+<versionCode>.apk`). **Mỗi lần phát hành: bump `versionCode` trong `app/build.gradle.kts`, build `assembleRelease`, tạo GitHub Release với tag đúng dạng và đính kèm `app-release.apk`.**
+- **Code:** `updater/UpdateInfo.kt` (model + parse GitHub JSON/tag), `updater/UpdateChecker.kt` (GET `/releases/latest`, so versionCode), `updater/ApkDownloader.kt` (tải + tiến trình), `updater/UpdateInstaller.kt` (FileProvider + intent cài). UI ở `MainActivity.UpdateBanner`, state ở `MainViewModel` (`UpdateUiState`, `checkForUpdate`, `downloadUpdate`, `dismissUpdate`).
+- **Test:** `UpdateInfoTest` (6) + `UpdateCheckerTest` (6, MockWebServer) → tổng **37/37 PASS** (25 cũ + 12 mới). Verify APK release có quyền `REQUEST_INSTALL_PACKAGES` + provider.
+- **KHÔNG tự cài ngầm:** cố ý chỉ tải + mở trình cài, để hệ thống/người dùng xác nhận (an toàn, tránh bị chặn).
+
 ## Đã verify trên giả lập (máy này)
 - Emulator `aosp_atd` (Android 11 / API 30), AVD `hermes_test`, boot ~35s (`-no-snapshot-load -no-boot-anim -gpu swiftshader_indirect`).
 - Cài APK → app chạy, `MainActivity` resumed, **không crash/ANR**. UI xác nhận qua `uiautomator dump` (đầy đủ: header `Model: Claude-Fable-5.3`, nút 📷 Quét QR, 4 quick buttons, ô nhập "Nhắn lệnh cho Hermes…", nút Gửi, ⚙, Xoá).
@@ -50,13 +59,13 @@
 - **Đổi tên file/folder theo quy tắc DẤU CHẤM** (1-2 từ cách nhau bằng `.`): **ĐÃ COMMIT** trong `02c4db7` — `CONTRIBUTING.md→docs.md`, `CHANGELOG.md→log.md`, `python-relay-server/→py.relay/` (kèm cập nhật path trong `docs.md`, `start_server.sh/.bat`).
 - **Đã dọn:** xoá file rác `android-app/real` (log lỡ ghi thành file) và `android-app/NUL` (rác Windows).
 
-## Trạng thái git (session 2)
-- **KHÔNG có remote** (`git remote -v` rỗng) → **KHÔNG push được**; mọi commit chỉ nằm ở local.
+## Trạng thái git (session 3)
+- **ĐÃ CÓ REMOTE:** `origin` = `https://github.com/quangminh1212/hermes-remote.git` (PUBLIC) → push được.
 - Commit mới nhất (mới nhất ở trên):
+  - `feat(android): add self-update via GitHub Releases` (banner + tải + cài, 12 test mới)
   - `6c4fffc` feat(npm-pack): add hermes-remote pairing CLI
   - `f603926` feat(android): rewrite app as QR-paired HTTP/SSE chat client
   - `7d69579` chore(gitignore): stop tracking keystore.properties
   - `02c4db7` refactor: rename files/folders to dotted convention
-- Working tree **SẠCH** sau các commit theo từng phần (rename · gitignore · android rewrite · npm-pack). Chỉ còn file ngoài git: `keystore.properties`, `HANDOFF.md` (xem mục dưới).
-- **Chưa đưa vào commit:** `HANDOFF.md` (tài liệu bàn giao — commit cùng phần doc nếu muốn).
-- `keystore.properties` + `C:\Users\GHC\hermes-keys\*` **KHÔNG bao giờ commit** (đã ignore).
+- Working tree **SẠCH**. File ngoài git: `keystore.properties`, `C:\Users\GHC\hermes-keys\*` (KHÔNG bao giờ commit).
+- **Phát hành bản mới cho auto-update:** bump `versionCode` trong `app/build.gradle.kts` → `assembleRelease` → `gh release create v<versionName>+<versionCode> app-release.apk`.
