@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">Hermes Remote</string>
+
+    <!-- Voice assistant -->
+    <string name="voice_notif_title">Hermes đang trợ lý</string>
+    <string name="voice_notif_listening">Đang nghe "Hey Hermes"…</string>
+    <string name="voice_notif_unavailable">Chưa cấu hình wake word — bấm micro trong app để nói</string>
+    <string name="voice_notif_stop">Tắt</string>
+    <string name="voice_channel_name">Trợ lý giọng Hermes</string>
+    <string name="voice_channel_desc">Giữ micro luôn nghe từ khoá "Hey Hermes"</string>
 </resources>

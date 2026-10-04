@@ -32,6 +32,7 @@ npx hermes-remote              # tunnel + QR page (recommended)
 npx hermes-remote --no-tunnel  # LAN only (phone must be on the same Wi-Fi)
 npx hermes-remote --port 8765  # fixed webview port
 npx hermes-remote --no-open    # don't auto-open the browser
+npx hermes-remote --webhook-token s3cr3t   # enable the voice-assistant webhook
 ```
 
 Options:
@@ -41,8 +42,38 @@ Options:
 | `--tunnel` | (default) public Cloudflare tunnel so it works over 4G |
 | `--no-tunnel`, `--lan` | skip the tunnel; use the LAN address only |
 | `--port <n>` | port for the local QR web page |
+| `--profile <name>` | pair the phone as a named Hermes profile |
+| `--webhook-token <t>` | enable `POST /api/webhook/ask` with shared secret `<t>` |
+| `--no-webhook` | disable the webhook (absent token already disables it) |
 | `--no-open` | do not open the browser automatically |
 | `-h`, `--help` | show help |
+
+## Voice webhook (IFTTT / Google Home)
+
+Pass `--webhook-token <t>` to expose a small endpoint that lets a voice
+assistant which can only call a URL — an IFTTT applet triggered by Google
+Assistant, or a Google Home routine — ask Hermes a question and read the answer.
+
+```bash
+POST http://127.0.0.1:PORT/api/webhook/ask
+Content-Type: application/json
+
+{ "token": "<t>", "text": "trạng thái git của dự án?" }
+```
+
+- Returns `{ "ok": true, "reply": "…" }`.
+- Add `?say=1` to get **plain text** instead of JSON (for a speaker to read).
+- The token may also be sent as the `x-webhook-token` header or `?token=`.
+- `GET /api/webhook/ping` → liveness check.
+
+**IFTTT recipe:** trigger *"Google Assistant → Say a phrase with a text ingredient"*
+→ action *"Webhooks → Make a web request"* (POST, `application/json`, body
+`{"token":"…","text":"{{TextField}}"}`). With a tunnel running, use
+`https://<your-tunnel>/api/webhook/ask` so it works off your LAN.
+
+> Google closed custom Conversational Actions in 2023, so an app cannot become
+> the brain of "Hey Google" itself. This webhook is the supported way to bridge
+> a Google-triggered automation to your own assistant.
 
 ## The QR payload
 

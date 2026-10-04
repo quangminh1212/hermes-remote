@@ -10,6 +10,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,35 +68,119 @@ import com.hermes.bridge.model.DeliveryState
 import com.hermes.bridge.model.ServerConfig
 import com.hermes.bridge.updater.ApkDownloader
 import com.hermes.bridge.updater.UpdateInstaller
+import com.hermes.bridge.voice.AndroidVoiceController
+import com.hermes.bridge.voice.VoiceBus
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    /** Concrete voice plumbing: system STT + TTS + the wake-word service. */
+    private lateinit var voiceController: AndroidVoiceController
+
+    /** Query handed in by a Google Assistant "App Action" (Phase B). */
+    private var pendingAssistantQuery: String? = null
 
     private val viewModel: MainViewModel by viewModels {
         MainViewModel.factory(
             ConfigStore(applicationContext),
             getSharedPreferences("hermes_bridge_update", Context.MODE_PRIVATE),
+            voiceController,
         )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        voiceController = AndroidVoiceController(applicationContext)
+        voiceController.warmUp()
+
+        // A Google Assistant "ask Hermes …" action arrives as an intent extra.
+        pendingAssistantQuery = extractAssistantQuery(intent)
+
         // Kick off an update check when the app opens (rate-limited to 6h by
         // the view model, so repeated launches are cheap).
         viewModel.checkForUpdate()
+        requestVoicePermissionsIfNeeded()
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ChatScreen(viewModel)
+                    val state by viewModel.state.collectAsState()
+                    ChatScreen(viewModel, state)
                 }
             }
+        }
+
+        // React to wake-word events coming from the foreground service.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                VoiceBus.events.collect { event ->
+                    when (event) {
+                        VoiceBus.Event.WAKE -> viewModel.onWakeWord()
+                        VoiceBus.Event.WAKE_UNAVAILABLE -> viewModel.onWakeWordUnavailable()
+                    }
+                }
+            }
+        }
+
+        // Run a pending Assistant query once the UI exists.
+        pendingAssistantQuery?.let { query ->
+            pendingAssistantQuery = null
+            viewModel.send(query)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractAssistantQuery(intent)?.let { viewModel.send(it) }
+    }
+
+    override fun onDestroy() {
+        voiceController.release()
+        super.onDestroy()
+    }
+
+    /** Ask for mic + notification permission the first time voice is used. */
+    private fun requestVoicePermissionsIfNeeded() {
+        val needed = mutableListOf<String>()
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += android.Manifest.permission.RECORD_AUDIO
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += android.Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (needed.isNotEmpty()) {
+            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+                .launch(needed.toTypedArray())
+        }
+    }
+
+    companion object {
+        /** Action used by the App Actions capability (see res/xml/shortcuts.xml). */
+        const val ACTION_ASK = "com.hermes.bridge.action.ASK"
+
+        /** Extra carrying the Assistant query text. */
+        const val EXTRA_QUERY = "query"
+
+        /** Pull a query out of an Assistant/App-Action intent, if present. */
+        fun extractAssistantQuery(intent: Intent?): String? {
+            intent ?: return null
+            val raw = intent.getStringExtra(EXTRA_QUERY)
+                ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?: intent.data?.getQueryParameter("query")
+            return raw?.trim()?.takeIf { it.isNotEmpty() }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatScreen(viewModel: MainViewModel) {
-    val state by viewModel.state.collectAsState()
+private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
     var showSettings by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
@@ -171,6 +258,12 @@ private fun ChatScreen(viewModel: MainViewModel) {
                 )
             }
 
+            VoiceStatusBar(
+                voice = state.voice,
+                onStopListening = viewModel::stopVoiceInput,
+                onStopSpeaking = viewModel::stopSpeaking,
+            )
+
             Box(modifier = Modifier.weight(1f)) {
                 if (state.messages.isEmpty()) {
                     EmptyState(onScanQr = startScan, scanError = scanError ?: state.connectionHint)
@@ -195,8 +288,11 @@ private fun ChatScreen(viewModel: MainViewModel) {
             InputBar(
                 value = state.input,
                 enabled = !state.isStreaming,
+                voice = state.voice,
                 onValueChange = viewModel::onInputChange,
                 onSend = { viewModel.send() },
+                onMic = viewModel::startVoiceInput,
+                onMicStop = viewModel::stopVoiceInput,
             )
         }
     }
@@ -205,6 +301,7 @@ private fun ChatScreen(viewModel: MainViewModel) {
         SettingsSheet(
             initial = state.config,
             hint = state.connectionHint,
+            voice = state.voice,
             onDismiss = { showSettings = false },
             onSave = {
                 viewModel.saveConfig(it)
@@ -215,7 +312,64 @@ private fun ChatScreen(viewModel: MainViewModel) {
                 showSettings = false
                 startScan()
             },
+            onToggleVoice = viewModel::setVoiceAssistantEnabled,
         )
+    }
+}
+
+/** Compact strip showing what the voice assistant is doing right now. */
+@Composable
+private fun VoiceStatusBar(
+    voice: VoiceUiState,
+    onStopListening: () -> Unit,
+    onStopSpeaking: () -> Unit,
+) {
+    // Hide the strip entirely when the assistant is idle and quiet.
+    val visible = voice.phase != VoicePhase.IDLE ||
+        !voice.statusMessage.isNullOrBlank() ||
+        voice.enabled
+    if (!visible) return
+
+    val (label, container) = when (voice.phase) {
+        VoicePhase.LISTENING -> "🎙 Đang nghe…" to MaterialTheme.colorScheme.tertiaryContainer
+        VoicePhase.THINKING -> "⏳ Hermes đang xử lý…" to MaterialTheme.colorScheme.secondaryContainer
+        VoicePhase.SPEAKING -> "🔊 Đang đọc trả lời…" to MaterialTheme.colorScheme.primaryContainer
+        VoicePhase.IDLE -> {
+            val msg = voice.statusMessage
+            when {
+                !msg.isNullOrBlank() -> msg to MaterialTheme.colorScheme.surfaceVariant
+                voice.enabled -> "👂 Đang chờ \"Hey Hermes\"" to MaterialTheme.colorScheme.surfaceVariant
+                else -> "" to MaterialTheme.colorScheme.surfaceVariant
+            }
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                if (voice.phase == VoicePhase.LISTENING && voice.partial.isNotBlank()) {
+                    Text(voice.partial, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            when (voice.phase) {
+                VoicePhase.LISTENING ->
+                    TextButton(onClick = onStopListening) { Text("Dừng") }
+                VoicePhase.SPEAKING ->
+                    TextButton(onClick = onStopSpeaking) { Text("Im") }
+                else -> Unit
+            }
+        }
     }
 }
 
@@ -379,9 +533,13 @@ private fun QuickActions(
 private fun InputBar(
     value: String,
     enabled: Boolean,
+    voice: VoiceUiState,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    onMic: () -> Unit,
+    onMicStop: () -> Unit,
 ) {
+    val listening = voice.phase == VoicePhase.LISTENING
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -397,6 +555,13 @@ private fun InputBar(
             maxLines = 4,
             enabled = enabled,
         )
+        // Mic: tap to talk, tap again to stop. Disabled if the device has no STT.
+        androidx.compose.material3.FilledTonalIconButton(
+            onClick = { if (listening) onMicStop() else onMic() },
+            enabled = (enabled || listening) && voice.micAvailable,
+        ) {
+            Text(if (listening) "⏹" else "🎙", style = MaterialTheme.typography.titleMedium)
+        }
         androidx.compose.material3.Button(
             onClick = onSend,
             enabled = enabled && value.isNotBlank(),
@@ -409,10 +574,12 @@ private fun InputBar(
 private fun SettingsSheet(
     initial: ServerConfig,
     hint: String?,
+    voice: VoiceUiState,
     onDismiss: () -> Unit,
     onSave: (ServerConfig) -> Unit,
     onTest: (ServerConfig) -> Unit,
     onScanQr: () -> Unit,
+    onToggleVoice: (Boolean) -> Boolean,
 ) {
     var url by remember { mutableStateOf(initial.baseUrl) }
     var key by remember { mutableStateOf(initial.apiKey) }
@@ -420,6 +587,11 @@ private fun SettingsSheet(
     var model by remember { mutableStateOf(initial.model) }
 
     val current = ServerConfig(url, key, profile, model)
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = remember { ConfigStore(context) }
+    var voiceEnabled by remember { mutableStateOf(voice.enabled) }
+    var porcupineKey by remember { mutableStateOf(store.loadPorcupineKey()) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -467,6 +639,52 @@ private fun SettingsSheet(
             if (hint != null) {
                 Text(hint, style = MaterialTheme.typography.bodySmall, color = Color(0xFF1565C0))
             }
+
+            androidx.compose.material3.Divider()
+
+            Text("Trợ lý giọng nói", style = MaterialTheme.typography.titleMedium)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Nghe \"Hey Hermes\"", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (voiceEnabled) "Đang bật — nói \"Hey Hermes\" để ra lệnh"
+                        else "Đang tắt — bấm micro trong app để nói",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = voiceEnabled,
+                    onCheckedChange = { on ->
+                        voiceEnabled = on
+                        val active = onToggleVoice(on)
+                        if (on && !active) {
+                            Toast.makeText(
+                                context,
+                                "Chưa cấu hình wake word — dùng nút micro",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                )
+            }
+
+            OutlinedTextField(
+                value = porcupineKey,
+                onValueChange = { porcupineKey = it },
+                label = { Text("Picovoice AccessKey (cho \"Hey Hermes\", để trống = tắt)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    store.savePorcupineKey(porcupineKey)
+                    Toast.makeText(context, "Đã lưu AccessKey", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Lưu AccessKey") }
+
+            androidx.compose.material3.Divider()
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { onTest(current) }) {

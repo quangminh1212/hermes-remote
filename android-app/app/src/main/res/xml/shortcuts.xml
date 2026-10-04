@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Google Assistant App Actions capability.
+
+  Declares an "ask Hermes" action Assistant can route to this app. When a user
+  says something like "Hey Google, ask Hermes to summarize my git status", the
+  Assistant launches MainActivity with the query in the "query" extra (see
+  MainActivity.extractAssistantQuery / ACTION_ASK).
+
+  Notes:
+  - App Actions require Google Play Services and are validated through the
+    Google Assistant plugin / Play Console; they cannot be fully exercised on a
+    bare AOSP emulator. The intent contract itself is testable with adb.
+  - version 1 of the capability keeps the surface intentionally small.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent
+            android:action="com.hermes.bridge.action.ASK"
+            android:targetClass="com.hermes.bridge.ui.MainActivity"
+            android:targetPackage="com.hermes.bridge">
+            <parameter
+                android:name="feature"
+                android:key="query"
+                android:required="true" />
+        </intent>
+    </capability>
+
+    <!--
+      A custom capability so a future Assistant shortcut can pass free text.
+      Kept in sync with ACTION_ASK above.
+    -->
+    <capability android:name="custom.hermes.ASK">
+        <intent
+            android:action="com.hermes.bridge.action.ASK"
+            android:targetClass="com.hermes.bridge.ui.MainActivity"
+            android:targetPackage="com.hermes.bridge" />
+    </capability>
+
+</shortcuts>

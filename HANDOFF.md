@@ -4,6 +4,16 @@
 
 ## Trạng thái: GẦN XONG — 2 pack đã build & test thật
 
+### 0. TRỢ LÝ GIỌNG NÓI (A + B + C) — MỚI (branch `feat/voice-assistant`)
+> Yêu cầu: biến app thành trợ lý ngoài đời thực, não vẫn trên Hermes PC, "Google Assistant thật" + wake word "Hey Hermes".
+> **Sự thật quan trọng:** Google **đã khai tử Conversational Actions (2023)** → KHÔNG thể thay não "Hey Google" bằng app bên thứ ba. Vì vậy làm 3 tầng bổ trợ:
+- **A. Trợ lý giọng trong app (lõi, khả thi 100%):** STT hệ thống (`SpeechRecognizerManager`) → `send()` → TTS hệ thống (`TtsSpeaker`, có strip markdown) đọc to. Nút 🎙 trong ô nhập (tap để nói). Wake word **"Hey Hermes"** qua **Porcupine** (`WakeWordDetector`) trong `VoiceAssistantService` (foreground, type `microphone`, notification "Hermes đang trợ lý"). **Thiếu AccessKey → fallback tap-to-talk, KHÔNG crash** (đã verify). `VoiceController` interface giữ ViewModel JVM-testable. `VoiceBus` nối service→UI. `BootReceiver` bật lại sau reboot.
+- **B. App Actions (`res/xml/shortcuts.xml`):** action `com.hermes.bridge.action.ASK` + `OPEN_APP_FEATURE`; Assistant mở app với extra `query` → app tự gửi. **Đã verify intent:** `adb shell am start ... -a com.hermes.bridge.action.ASK --es query "..."` → app tự gửi + Hermes trả lời. Cần Play Services + Play Console để test đầy đủ (không test được hết trên ATD).
+- **C. Webhook IFTTT/Google Home (npm-pack):** `POST /api/webhook/ask` (`lib/server.js`), xác thực token, forward sang gateway (non-stream), trả `{ok, reply}`; `?say=1` trả plain text cho loa đọc. Cờ CLI `--webhook-token <t>`. **Đã test thật với gateway Hermes:** `PONG` trả về đúng; sai token → 401.
+- **Test:** Android **51/51 PASS** (37 cũ + 14 mới: `TtsSpeakerTest` 8, `VoiceStateTest` 6). npm **15/15 PASS** (7 cũ + 8 webhook). Build `assembleDebug` + `assembleRelease` OK; **release R8 giữ được Porcupine native libs (4 ABI) + chữ ký cũ nguyên** (SHA-256 `f4fb5b41…`); cài release lên emulator chạy OK, service voice OK, không crash.
+- **Verify trên emulator được:** UI mic + settings toggle + service foreground + notification + App Action intent + chat regression. **KHÔNG verify được:** âm thanh thật (ATD không có mic/camera), STT thật (ATD không có recognition service), wake word thật (cần AccessKey + .ppn), App Actions đầy đủ (cần Play Services).
+- **CÒN LẦI:** (1) đăng ký **Picovoice AccessKey** miễn phí + train file **`hey_hermes.ppn`** (đặt vào `android-app/app/src/main/assets/`); (2) test giọng nói/wake word trên **máy Android thật**; (3) đăng ký App Actions + IFTTT applet (hướng dẫn ở `npm-pack/README.md`).
+
 ### 1. npm pack — `hermes-remote` (PC)
 - **Đường dẫn:** `C:\Dev\Hermes_Android\npm-pack\`
 - **Chạy:** `npx hermes-remote` (hoặc `npm install -g` từ tarball)

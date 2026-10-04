@@ -30,6 +30,24 @@ data class ChatUiState(
     val config: ServerConfig = ServerConfig.DEFAULT,
     val connectionHint: String? = null,
     val update: UpdateUiState = UpdateUiState(),
+    val voice: VoiceUiState = VoiceUiState(),
+)
+
+/** Phase of a voice turn, used to drive the mic button + status text. */
+enum class VoicePhase { IDLE, LISTENING, THINKING, SPEAKING }
+
+/**
+ * State of the voice assistant. [enabled] mirrors whether the always-listening
+ * wake-word service is running; [micAvailable] is false when the device has no
+ * speech recognizer at all.
+ */
+data class VoiceUiState(
+    val phase: VoicePhase = VoicePhase.IDLE,
+    val enabled: Boolean = false,
+    val micAvailable: Boolean = true,
+    val wakeWordActive: Boolean = false,
+    val partial: String = "",
+    val statusMessage: String? = null,
 )
 
 /** State of the self-update flow shown as a banner/dialog. */
@@ -45,19 +63,83 @@ data class UpdateUiState(
 /** How often to re-check in the background once the app is open. */
 private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6h
 
+/**
+ * Bridge the ViewModel uses to drive microphone/speech, so the ViewModel itself
+ * stays free of Android framework classes and unit-testable on the JVM.
+ *
+ * The Activity provides the concrete implementation (STT + TTS + wake service).
+ */
+interface VoiceController {
+    /** Whether the device has a speech recognizer. */
+    fun isMicAvailable(): Boolean
+
+    /** Whether the always-listening wake-word service is currently enabled. */
+    fun isAssistantEnabled(): Boolean
+
+    /** Whether replies should be read aloud. */
+    fun isSpeakRepliesEnabled(): Boolean
+
+    /** Whether the wake-word engine actually started (has a key + keyword). */
+    fun isWakeWordActive(): Boolean
+
+    /** Begin one listening turn; results come back through [onResult]/[onPartial]/[onError]. */
+    fun startListening(onPartial: (String) -> Unit, onResult: (String) -> Unit, onError: (String) -> Unit)
+
+    /** Stop the current listening turn. */
+    fun stopListening()
+
+    /** Speak an assistant reply aloud. */
+    fun speak(text: String)
+
+    /** Stop any speech in progress (user interrupt). */
+    fun stopSpeaking()
+
+    /** Enable/disable the wake-word service; returns whether it is now active. */
+    fun setAssistantEnabled(enabled: Boolean): Boolean
+}
+
+/** No-op controller used by tests and previews. */
+object NoopVoiceController : VoiceController {
+    override fun isMicAvailable() = false
+    override fun isAssistantEnabled() = false
+    override fun isSpeakRepliesEnabled() = false
+    override fun isWakeWordActive() = false
+    override fun startListening(onPartial: (String) -> Unit, onResult: (String) -> Unit, onError: (String) -> Unit) = Unit
+    override fun stopListening() = Unit
+    override fun speak(text: String) = Unit
+    override fun stopSpeaking() = Unit
+    override fun setAssistantEnabled(enabled: Boolean) = false
+}
+
 /** Drives the chat: holds transcript, config, and streams replies. */
 class MainViewModel(
     private val configStore: ConfigStore,
     private val api: ChatApi = ChatApi(),
     private val updateChecker: UpdateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
     private val updatePrefs: android.content.SharedPreferences? = null,
+    private val voice: VoiceController = NoopVoiceController,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(ChatUiState(config = configStore.load()))
+    private val _state = MutableStateFlow(
+        ChatUiState(
+            config = configStore.load(),
+            voice = VoiceUiState(
+                enabled = voice.isAssistantEnabled(),
+                micAvailable = voice.isMicAvailable(),
+                wakeWordActive = voice.isWakeWordActive(),
+            ),
+        ),
+    )
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     /** True when an update banner should be shown to the user. */
     val hasUpdate: Boolean get() = _state.value.update.available != null
+
+    /**
+     * True while a turn was started by voice, so the reply should be spoken
+     * back once the stream finishes.
+     */
+    private var spokenSession = false
 
     /**
      * Check for a newer release, at most once per [UPDATE_CHECK_INTERVAL_MS]
@@ -199,11 +281,18 @@ class MainViewModel(
             state = DeliveryState.STREAMING,
         )
         val history = current.messages + userMsg
+        // A spoken session is one whose prompt came in via voice (see startVoiceInput).
+        val voicePhase = if (spokenSession) VoicePhase.THINKING else current.voice.phase
         _state.value = current.copy(
             messages = history + placeholder,
             input = "",
             isStreaming = true,
             connectionHint = null,
+            voice = current.voice.copy(
+                phase = voicePhase,
+                partial = "",
+                statusMessage = null,
+            ),
         )
 
         viewModelScope.launch {
@@ -229,8 +318,16 @@ class MainViewModel(
     }
 
     private fun failStream(id: String, message: String) {
+        // A failed voice turn should surface the error aloud too, so a
+        // hands-free user knows it broke without looking at the screen.
+        val wasSpoken = spokenSession
+        spokenSession = false
         _state.value = _state.value.copy(
             isStreaming = false,
+            voice = _state.value.voice.copy(
+                phase = if (wasSpoken) VoicePhase.SPEAKING else VoicePhase.IDLE,
+                partial = "",
+            ),
             messages = _state.value.messages.map { msg ->
                 if (msg.id == id) {
                     msg.copy(
@@ -243,6 +340,7 @@ class MainViewModel(
                 }
             },
         )
+        if (wasSpoken) speakAndReturnToIdle("Xin lỗi, có lỗi xảy ra. $message")
     }
 
     private fun finishStream(id: String, result: String) {
@@ -250,11 +348,19 @@ class MainViewModel(
             .firstOrNull { it.id == id }
             ?.state == DeliveryState.ERROR
         if (alreadyFailed) return
+
+        val wasSpoken = spokenSession
+        spokenSession = false
+        val blank = result.isBlank()
+
         _state.value = _state.value.copy(
             isStreaming = false,
+            voice = _state.value.voice.copy(
+                phase = if (wasSpoken && !blank) VoicePhase.SPEAKING else VoicePhase.IDLE,
+                partial = "",
+            ),
             messages = _state.value.messages.map { msg ->
                 if (msg.id == id) {
-                    val blank = result.isBlank()
                     msg.copy(
                         state = if (blank) DeliveryState.ERROR else DeliveryState.DONE,
                         content = result.ifBlank { "Không có phản hồi." },
@@ -264,6 +370,128 @@ class MainViewModel(
                     msg
                 }
             },
+        )
+
+        if (wasSpoken) {
+            speakAndReturnToIdle(if (blank) "Xin lỗi, mình không có câu trả lời." else result)
+        }
+    }
+
+    /**
+     * Read [text] aloud (if speak-replies is on) then drop the voice phase back
+     * to IDLE. When speaking is off we return to IDLE immediately.
+     */
+    private fun speakAndReturnToIdle(text: String) {
+        if (voice.isSpeakRepliesEnabled()) {
+            voice.speak(text)
+            _state.value = _state.value.copy(
+                voice = _state.value.voice.copy(phase = VoicePhase.SPEAKING),
+            )
+        } else {
+            _state.value = _state.value.copy(
+                voice = _state.value.voice.copy(phase = VoicePhase.IDLE),
+            )
+        }
+    }
+
+    // --- Voice assistant -----------------------------------------------------
+
+    /**
+     * Begin one voice turn: listen, then send the transcript as a normal chat
+     * message. The reply is spoken back when the stream finishes.
+     */
+    fun startVoiceInput() {
+        val current = _state.value
+        if (current.isStreaming) return
+        if (!current.voice.micAvailable) {
+            _state.value = current.copy(
+                voice = current.voice.copy(statusMessage = "Thiết bị không có trình nhận dạng giọng nói"),
+            )
+            return
+        }
+        spokenSession = true
+        _state.value = current.copy(
+            voice = current.voice.copy(
+                phase = VoicePhase.LISTENING,
+                partial = "",
+                statusMessage = null,
+            ),
+        )
+        voice.startListening(
+            onPartial = { p ->
+                _state.value = _state.value.copy(
+                    voice = _state.value.voice.copy(partial = p),
+                )
+            },
+            onResult = { text ->
+                spokenSession = text.isNotBlank()
+                if (text.isBlank()) {
+                    _state.value = _state.value.copy(
+                        voice = _state.value.voice.copy(phase = VoicePhase.IDLE, partial = ""),
+                    )
+                } else {
+                    send(text)
+                }
+            },
+            onError = { message ->
+                spokenSession = false
+                _state.value = _state.value.copy(
+                    voice = _state.value.voice.copy(
+                        phase = VoicePhase.IDLE,
+                        partial = "",
+                        statusMessage = message,
+                    ),
+                )
+            },
+        )
+    }
+
+    /** Abort the current listening turn (user tapped "stop"). */
+    fun stopVoiceInput() {
+        spokenSession = false
+        voice.stopListening()
+        _state.value = _state.value.copy(
+            voice = _state.value.voice.copy(phase = VoicePhase.IDLE, partial = ""),
+        )
+    }
+
+    /** Stop reading the current reply aloud. */
+    fun stopSpeaking() {
+        voice.stopSpeaking()
+        _state.value = _state.value.copy(
+            voice = _state.value.voice.copy(phase = VoicePhase.IDLE),
+        )
+    }
+
+    /**
+     * Turn the always-listening wake-word assistant on/off. Returns the new
+     * enabled state. Persists the choice so it survives restarts.
+     */
+    fun setVoiceAssistantEnabled(enabled: Boolean): Boolean {
+        val active = voice.setAssistantEnabled(enabled)
+        configStore.setVoiceAssistantEnabled(enabled)
+        _state.value = _state.value.copy(
+            voice = _state.value.voice.copy(
+                enabled = enabled,
+                wakeWordActive = voice.isWakeWordActive(),
+            ),
+        )
+        return active
+    }
+
+    /** Called when the wake word fires: kick off a listening turn. */
+    fun onWakeWord() {
+        if (_state.value.isStreaming) return
+        startVoiceInput()
+    }
+
+    /** Surface that the wake-word engine could not start (missing key, etc.). */
+    fun onWakeWordUnavailable() {
+        _state.value = _state.value.copy(
+            voice = _state.value.voice.copy(
+                wakeWordActive = false,
+                statusMessage = "Chưa cấu hình wake word — bấm micro để nói",
+            ),
         )
     }
 
@@ -279,6 +507,7 @@ class MainViewModel(
         fun factory(
             store: ConfigStore,
             updatePrefs: android.content.SharedPreferences? = null,
+            voice: VoiceController = NoopVoiceController,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -287,6 +516,7 @@ class MainViewModel(
                         configStore = store,
                         updateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
                         updatePrefs = updatePrefs,
+                        voice = voice,
                     ) as T
             }
     }

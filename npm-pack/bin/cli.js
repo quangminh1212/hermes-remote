@@ -21,7 +21,7 @@ const tunnel = require("../lib/tunnel");
 const { createServer, listen } = require("../lib/server");
 
 function parseArgs(argv) {
-  const a = { tunnel: true, open: true, port: 0, profile: "" };
+  const a = { tunnel: true, open: true, port: 0, profile: "", webhookToken: "" };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--no-tunnel" || t === "--lan") a.tunnel = false;
@@ -29,6 +29,8 @@ function parseArgs(argv) {
     else if (t === "--no-open") a.open = false;
     else if (t === "--port") a.port = parseInt(argv[++i] || "0", 10);
     else if (t === "--profile") a.profile = String(argv[++i] || "");
+    else if (t === "--webhook-token") a.webhookToken = String(argv[++i] || "");
+    else if (t === "--no-webhook") a.webhookToken = "";
     else if (t === "--help" || t === "-h") a.help = true;
   }
   return a;
@@ -46,6 +48,9 @@ Tuỳ chọn:
   --tunnel             (mặc định) Mở tunnel công khai để dùng từ 4G
   --port <n>           Cổng cho trang webview QR (mặc định: tự chọn)
   --profile <tên>      Dùng profile Hermes này cho điện thoại (mặc định: key gốc)
+  --webhook-token <t>  Bật webhook /api/webhook/ask với token bí mật <t>
+                       (dùng cho IFTTT / Google Home điều khiển bằng giọng)
+  --no-webhook         Tắt webhook (mặc định cũng tắt nếu không truyền token)
   --no-open            Không tự mở trình duyệt
   -h, --help           Hiện trợ giúp
 `);
@@ -153,6 +158,8 @@ async function main() {
     model: cfg.model,
     profiles,
     profile,
+    gatewayUrl: localUrl,
+    webhookToken: args.webhookToken,
   });
   const { url: webUrl, port: webPort } = await listen(app, args.port);
 
@@ -177,6 +184,20 @@ async function main() {
   console.log("  Server công khai  : " + publicUrl);
   console.log("  Server LAN        : " + localUrl);
   console.log("  Model             : " + (cfg.model || "(mặc định)"));
+
+  if (args.webhookToken) {
+    banner([
+      "WEBHOOK CHO IFTTT / GOOGLE HOME",
+      "POST " + webUrl + "/api/webhook/ask",
+      'Body JSON: {"token":"<token>","text":"câu hỏi"}',
+      "Thêm ?say=1 để nhận plain text (cho loa đọc).",
+    ]);
+    console.log("  Webhook token     : " + args.webhookToken);
+    console.log("  Kiểm tra sống     : GET " + webUrl + "/api/webhook/ping");
+  } else {
+    console.log("  Webhook           : tắt (thêm --webhook-token <t> để bật)");
+  }
+
   console.log("\n  Nhấn Ctrl+C để dừng.\n");
 
   if (args.open) openBrowser(webUrl);

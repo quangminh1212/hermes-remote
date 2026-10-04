@@ -3,6 +3,10 @@
 /**
  * The local "webview" server: serves a QR page (and a machine-readable
  * /api/connect payload) that the Android app scans to auto-configure itself.
+ *
+ * It also exposes a small webhook (/api/webhook/ask) so voice assistants that
+ * can only call a URL — IFTTT applets triggered by Google Assistant, or a
+ * Google Home routine — can ask Hermes something and get the answer back.
  */
 
 const express = require("express");
@@ -17,6 +21,11 @@ const path = require("path");
  * @param {string} opts.model      Default model id.
  * @param {string[]} opts.profiles Available Hermes profiles.
  * @param {number} [opts.port]     Port for this QR webview server (0 = random).
+ * @param {string} [opts.gatewayUrl] Base URL of the local Hermes gateway to ask
+ *                                   (defaults to the LAN url).
+ * @param {string} [opts.webhookToken] Shared secret required by the webhook.
+ *                                     Empty disables the webhook entirely.
+ * @param {Function} [opts.fetchImpl] fetch implementation (injectable for tests).
  */
 function createServer(opts) {
   const app = express();
@@ -51,12 +60,93 @@ function createServer(opts) {
     }
   });
 
+  // --- Webhook (Phase C): let IFTTT / Google Home ask Hermes ---------------
+
+  const gatewayUrl = (opts.gatewayUrl || opts.localUrl || "").replace(/\/$/, "");
+  const fetchImpl = opts.fetchImpl || globalThis.fetch;
+  const webhookToken = opts.webhookToken || "";
+
+  // Liveness probe for IFTTT/Google Home setup.
+  app.get("/api/webhook/ping", (_req, res) => {
+    res.json({ ok: true, webhook: webhookToken ? "enabled" : "disabled" });
+  });
+
+  app.post("/api/webhook/ask", async (req, res) => {
+    if (!webhookToken) {
+      return res.status(404).json({ ok: false, error: "webhook disabled" });
+    }
+    const body = req.body || {};
+    const token = body.token || req.get("x-webhook-token") || req.query.token;
+    if (token !== webhookToken) {
+      return res.status(401).json({ ok: false, error: "bad token" });
+    }
+
+    const text = String(body.text ?? body.query ?? "").trim();
+    if (!text) {
+      return res.status(400).json({ ok: false, error: "missing text" });
+    }
+    if (typeof fetchImpl !== "function") {
+      return res.status(500).json({ ok: false, error: "no fetch available" });
+    }
+
+    try {
+      const reply = await askGateway(fetchImpl, gatewayUrl, opts.apiKey, {
+        model: opts.model,
+        profile: opts.profile,
+        text,
+      });
+      // ?say=1 returns plain text so a speaker can read it directly.
+      if (req.query.say === "1") {
+        return res.type("text/plain").send(reply);
+      }
+      return res.json({ ok: true, reply });
+    } catch (e) {
+      return res.status(502).json({ ok: false, error: String(e && e.message ? e.message : e) });
+    }
+  });
+
   // The human-facing page.
   app.get("/", (_req, res) => {
     res.type("html").send(renderPage(connectPayload));
   });
 
   return app;
+}
+
+/**
+ * POST a single-turn prompt to the Hermes gateway and return the assistant text.
+ * Non-streaming: IFTTT/Google Home want the whole answer at once.
+ */
+async function askGateway(fetchImpl, gatewayUrl, apiKey, { model, profile, text }) {
+  const profileSegment = profile ? `/p/${profile}` : "";
+  const url = `${gatewayUrl}${profileSegment}/v1/chat/completions`;
+  const resp = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: model || undefined,
+      messages: [{ role: "user", content: text }],
+      stream: false,
+    }),
+  });
+  if (!resp.ok) {
+    const detail = await safeText(resp);
+    throw new Error(`gateway ${resp.status}: ${detail.slice(0, 200)}`);
+  }
+  const json = await resp.json();
+  const content = json?.choices?.[0]?.message?.content;
+  return typeof content === "string" && content.trim() ? content.trim() : "(Hermes không trả lời)";
+}
+
+async function safeText(resp) {
+  try {
+    return await resp.text();
+  } catch (_) {
+    return "";
+  }
 }
 
 function esc(s) {

@@ -123,3 +123,198 @@ function getBuffer(url) {
       .on("error", reject);
   });
 }
+
+/** POST a JSON body and return { status, headers, text }. */
+function postJson(url, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const u = new URL(url);
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...headers },
+      },
+      (res) => {
+        let b = "";
+        res.on("data", (c) => (b += c));
+        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: b }));
+      }
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/** A fake fetch that answers chat-completions with a canned reply. */
+function fakeGateway(reply, capture) {
+  return async (url, init) => {
+    if (capture) {
+      capture.url = url;
+      capture.body = JSON.parse(init.body);
+      capture.auth = init.headers.Authorization;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { role: "assistant", content: reply } }] }),
+      text: async () => "",
+    };
+  };
+}
+
+test("parseArgs: --webhook-token enables the webhook, absent by default", () => {
+  assert.equal(parseArgs([]).webhookToken, "");
+  assert.equal(parseArgs(["--webhook-token", "s3cr3t"]).webhookToken, "s3cr3t");
+});
+
+test("webhook: disabled (404) when no token configured", async () => {
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:1",
+    apiKey: "k",
+    model: "m",
+    profiles: [],
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(`http://127.0.0.1:${port}/api/webhook/ask`, { text: "hi" });
+    assert.equal(r.status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: rejects a bad token with 401", async () => {
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:1",
+    apiKey: "k",
+    model: "m",
+    profiles: [],
+    webhookToken: "good",
+    fetchImpl: fakeGateway("nope"),
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(`http://127.0.0.1:${port}/api/webhook/ask`, { token: "bad", text: "hi" });
+    assert.equal(r.status, 401);
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: forwards the prompt to the gateway and returns the reply", async () => {
+  const capture = {};
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:8642",
+    apiKey: "secret-key",
+    model: "Claude-Fable.3",
+    profiles: [],
+    webhookToken: "good",
+    fetchImpl: fakeGateway("Xin chào, đây là Hermes.", capture),
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(
+      `http://127.0.0.1:${port}/api/webhook/ask`,
+      { token: "good", text: "trạng thái git?" }
+    );
+    assert.equal(r.status, 200);
+    const json = JSON.parse(r.text);
+    assert.equal(json.ok, true);
+    assert.equal(json.reply, "Xin chào, đây là Hermes.");
+    assert.equal(capture.url, "http://localhost:8642/v1/chat/completions");
+    assert.equal(capture.auth, "Bearer secret-key");
+    assert.equal(capture.body.messages[0].content, "trạng thái git?");
+    assert.equal(capture.body.stream, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: ?say=1 returns plain text; token may come from a header", async () => {
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:8642",
+    apiKey: "k",
+    model: "m",
+    profiles: [],
+    webhookToken: "good",
+    fetchImpl: fakeGateway("câu trả lời"),
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(
+      `http://127.0.0.1:${port}/api/webhook/ask?say=1`,
+      { text: "hỏi" },
+      { "x-webhook-token": "good" }
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.text, "câu trả lời");
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: uses /p/<profile> when a profile is set", async () => {
+  const capture = {};
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:8642",
+    apiKey: "k",
+    model: "m",
+    profiles: ["dalek"],
+    profile: "dalek",
+    webhookToken: "good",
+    fetchImpl: fakeGateway("ok", capture),
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(`http://127.0.0.1:${port}/api/webhook/ask`, { token: "good", text: "x" });
+    assert.equal(r.status, 200);
+    assert.equal(capture.url, "http://localhost:8642/p/dalek/v1/chat/completions");
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: gateway failure surfaces as 502", async () => {
+  const failing = async () => ({ ok: false, status: 500, text: async () => "boom", json: async () => ({}) });
+  const app = createServer({
+    publicUrl: "http://x",
+    localUrl: "http://localhost:8642",
+    apiKey: "k",
+    model: "m",
+    profiles: [],
+    webhookToken: "good",
+    fetchImpl: failing,
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const r = await postJson(`http://127.0.0.1:${port}/api/webhook/ask`, { token: "good", text: "x" });
+    assert.equal(r.status, 502);
+    assert.equal(JSON.parse(r.text).ok, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("webhook: /api/webhook/ping reports enabled/disabled", async () => {
+  const appOn = createServer({
+    publicUrl: "http://x", localUrl: "http://localhost:1", apiKey: "k",
+    model: "m", profiles: [], webhookToken: "t",
+  });
+  const { port, server } = await listen(appOn, 0);
+  try {
+    const json = await getJson(`http://127.0.0.1:${port}/api/webhook/ping`);
+    assert.equal(json.ok, true);
+    assert.equal(json.webhook, "enabled");
+  } finally {
+    server.close();
+  }
+});

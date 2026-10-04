@@ -1,30 +1,52 @@
 # Hermes Bridge — Android
 
-Android client for the Hermes Agent. Connects to the Python relay server over
-WebSocket and executes device interaction commands (tap, swipe, text input,
-UI-tree reading, screenshots) through a real `AccessibilityService`.
+Android client for the Hermes Agent on your PC. Pairs by scanning a QR code
+(from the `hermes-remote` npm pack), then chats with the agent over HTTP + SSE
+and — optionally — by voice.
+
+## Features
+
+- **QR pairing** — scan the code from the `hermes-remote` page; the app fills in
+  server URL, API key, profile and model, then connects.
+- **Streaming chat** — prompts are sent to `/v1/chat/completions` and the reply
+  streams back token by token.
+- **Voice assistant** — tap the 🎙 mic to talk (system speech-to-text, replies
+  read aloud with text-to-speech). Optionally enable the always-listening
+  **"Hey Hermes"** wake word (Picovoice Porcupine — needs a free AccessKey).
+- **Google Assistant (App Actions)** — "Hey Google, ask Hermes …" opens the app
+  with the question pre-filled and sends it (`res/xml/shortcuts.xml`).
+- **Voice webhook** — the `hermes-remote` pack can expose a webhook so an IFTTT
+  applet / Google Home routine can ask Hermes a question (see its README).
+- **Self-update** — checks GitHub Releases and offers to download + install a
+  newer APK.
 
 ## Architecture
 
 ```
 app/src/main/java/com/hermes/bridge/
 ├── HermesBridgeApplication.kt     Application entry point
-├── protocol/                      Wire protocol (shared with the Python server)
-│   ├── MessageType.kt             Message + action name constants
-│   └── CommandRequest.kt          Inbound command DTO + typed param accessors
-├── service/
-│   ├── AccessibilityBridgeService.kt   Real gestures via dispatchGesture,
-│   │                                   text via ACTION_SET_TEXT, screenshot,
-│   │                                   UI tree, app launch
-│   ├── CommandExecutor.kt              Maps protocol actions -> service calls
-│   └── WebSocketConnectionService.kt   Foreground service holding the socket
-├── websocket/
-│   ├── WebSocketClient.kt         OkHttp WS, auth, reconnect w/ backoff
-│   └── ConnectionManager.kt       Process-wide singleton + observable state
+├── data/
+│   ├── ChatApi.kt                 HTTP + SSE client for /v1/chat/completions
+│   ├── ConfigStore.kt             SharedPreferences: server config + voice opts
+│   └── SseParser.kt               Incremental SSE "data:" line parser
+├── model/                         ChatMessage, ServerConfig, ConnectPayload
+├── voice/
+│   ├── SpeechRecognizerManager.kt System speech-to-text wrapper
+│   ├── TtsSpeaker.kt              System text-to-speech (+ markdown sanitizer)
+│   ├── WakeWordDetector.kt        Porcupine "Hey Hermes" (optional, graceful)
+│   ├── VoiceAssistantService.kt   Foreground service for the wake word
+│   ├── AndroidVoiceController.kt  Concrete VoiceController for the ViewModel
+│   ├── VoiceBus.kt                Service → UI signal (wake events)
+│   └── BootReceiver.kt            Re-arms the assistant after reboot
+├── updater/                       GitHub Releases self-update
 └── ui/
-    ├── MainActivity.kt            Compose screen
-    └── MainViewModel.kt           UI state + accessibility status
+    ├── MainActivity.kt            Compose chat screen + App Action handling
+    ├── MainViewModel.kt           Chat + voice state, exposes VoiceController
+    └── QrScanActivity.kt          QR scanner for pairing
 ```
+
+The ViewModel talks to voice through a small `VoiceController` interface so it
+stays free of Android framework classes and unit-testable on the JVM.
 
 ## Build
 
@@ -41,25 +63,44 @@ Requires JDK 17 and Android SDK 34. Create `local.properties` from
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 ```
 
+Release builds read `keystore.properties` (kept out of git); if it is missing
+the release falls back to unsigned.
+
 ## Test
 
 ```bash
-./gradlew test                   # unit tests
-./gradlew connectedAndroidTest   # instrumented (device/emulator)
+./gradlew testDebugUnitTest   # JVM unit tests
 ```
+
+Unit tests cover the SSE parser, HTTP client (MockWebServer), config/URL
+building, the update checker, and the TTS markdown sanitizer. Hardware paths
+(mic, TTS, camera, wake word) are verified on an emulator/device.
 
 ## Usage
 
-1. Install the app, open it.
-2. Tap **Enable Accessibility Service** and enable *Hermes Bridge*.
-3. (Recommended) Tap **Disable Battery Optimization**.
-4. Enter the relay server WebSocket URL and the pairing code.
-5. Tap **Start**. Status turns green when connected.
+1. On the PC run `npx hermes-remote` and open the QR page.
+2. In the app tap **Quét QR** and scan it — the app configures and connects.
+3. Type a message, tap a quick-action chip, or tap the 🎙 **mic** to talk.
+4. To use the wake word: open ⚙ settings → enter your Picovoice AccessKey →
+   enable **Nghe "Hey Hermes"**. Put a `hey_hermes.ppn` keyword in `assets/`
+   (Porcupine) — without a key or keyword the app stays in tap-to-talk mode.
 
-Screenshots require Android 11 (API 30) or newer.
+### Google Assistant (App Actions)
 
-## Protocol
+The app registers the `com.hermes.bridge.action.ASK` action (see
+`res/xml/shortcuts.xml`). App Actions are validated through the Google
+Assistant plugin / Play Console and need Google Play Services; they cannot be
+fully exercised on a bare AOSP emulator. The intent contract is testable with:
 
-See `protocol/` and the server's `relay_server.py`. Device→server frames are
-`auth.request`, `command.complete`, `command.error`; server→device frames are
-`auth.grant`, `auth.reject`, `command.execute`.
+```bash
+adb shell am start -n com.hermes.bridge.debug/com.hermes.bridge.ui.MainActivity \
+  -a com.hermes.bridge.action.ASK --es query "trạng thái git"
+```
+
+## Permissions
+
+`INTERNET`, `ACCESS_NETWORK_STATE`, `CAMERA` (QR), `REQUEST_INSTALL_PACKAGES`
+(self-update), and for voice: `RECORD_AUDIO`, `FOREGROUND_SERVICE`,
+`FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`.
+The microphone is only used when the user taps the mic or explicitly enables the
+wake-word service (which shows a persistent notification).

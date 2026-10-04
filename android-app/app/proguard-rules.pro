@@ -17,3 +17,12 @@
 
 # Kotlin coroutines
 -dontwarn kotlinx.coroutines.**
+
+# Picovoice Porcupine (wake word) — JNI entry points + native bridge.
+-keep class ai.picovoice.** { *; }
+-dontwarn ai.picovoice.**
+
+# Voice assistant classes referenced only via reflection/manifest.
+-keep class com.hermes.bridge.voice.** { *; }
+-keep class com.hermes.bridge.ui.MainActivity { *; }
+
