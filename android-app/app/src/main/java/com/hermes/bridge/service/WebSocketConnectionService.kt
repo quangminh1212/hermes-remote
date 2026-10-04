@@ -33,9 +33,14 @@ class WebSocketConnectionService : Service() {
         val serverUrl = intent?.getStringExtra("SERVER_URL") ?: "ws://localhost:8765/ws"
         val pairingCode = intent?.getStringExtra("PAIRING_CODE")
         
-        // Start WebSocket connection
-        webSocketClient = WebSocketClient(serverUrl)
-        webSocketClient?.connect(pairingCode)
+        // Initialize WebSocket client
+        webSocketClient = WebSocketClient()
+        
+        // Set accessibility service instance and WebSocket client
+        AccessibilityBridgeService.webSocketClient = webSocketClient
+        
+        // Connect to server
+        webSocketClient?.connect(serverUrl, pairingCode)
         
         return START_STICKY
     }

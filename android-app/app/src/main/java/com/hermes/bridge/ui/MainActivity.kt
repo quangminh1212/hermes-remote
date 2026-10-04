@@ -39,7 +39,7 @@ class MainActivity : AppCompatActivity() {
                         serverUrl = viewModel.serverUrl.value,
                         pairingCode = viewModel.pairingCode,
                         onServerUrlChange = viewModel::updateServerUrl,
-                        onPairingCodeChange = viewModel::updatePairingCode,
+                        onPairingCodeChange = { code: String -> viewModel.updatePairingCode(code) },
                         onStartConnection = ::startConnectionService,
                         onCheckAccessibility = ::openAccessibilitySettings
                     )

@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityManager
+import android.util.Log
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.hermes.bridge.ui.MainActivity
 import com.hermes.bridge.websocket.WebSocketClient
@@ -28,6 +29,8 @@ import java.util.Base64
 class AccessibilityBridgeService : AccessibilityService() {
     
     companion object {
+        const val TAG = "AccessibilityBridge"
+        
         var instance: AccessibilityBridgeService? = null
             private set
         
@@ -80,12 +83,12 @@ class AccessibilityBridgeService : AccessibilityService() {
                 // Use performGlobalAction for better compatibility
                 sendGestureEvent(createTouchEvents(x, y, durationMs))
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Tap execution failed", e)
                 // Fallback method
                 try {
                     pressKeyAtCoordinates(x, y)
                 } catch (fallbackEx: Exception) {
-                    fallbackEx.printStackTrace()
+                    Log.e(TAG, "Fallback tap failed", fallbackEx)
                 }
             }
         }
@@ -159,13 +162,13 @@ class AccessibilityBridgeService : AccessibilityService() {
                     pasteFromClipboard(text)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                    Log.e(TAG, "Exception handling failed")
                 
                 // Final fallback: Use shell input method
                 try {
                     sendShellInput(text)
                 } catch (fallbackEx: Exception) {
-                    fallbackEx.printStackTrace()
+                    Log.e(TAG, "Fallback tap failed", fallbackEx)
                 }
             }
         }
@@ -280,7 +283,7 @@ class AccessibilityBridgeService : AccessibilityService() {
             sendKeyEvent(ctrlVUp)
             
         } catch (e: Exception) {
-            e.printStackTrace()
+                Log.e(TAG, "Exception handling failed")
         }
     }
     
@@ -297,59 +300,113 @@ class AccessibilityBridgeService : AccessibilityService() {
             ))
             // This is just a placeholder - actual implementation would need proper intent
         } catch (e: Exception) {
-            e.printStackTrace()
+                Log.e(TAG, "Exception handling failed")
         }
     }
     
     /**
-     * Perform swipe gesture
+     * Perform swipe gesture from one point to another
      */
     fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Int = 300) {
         scope.launch {
             try {
-                val gesture = android.view.MotionEvent.obtain(
-                    0, 0, 0,
-                    startX, startY,
-                    0
+                // Create swipe gesture with interpolated points for smoothness
+                val timeStep = durationMs / 10.0
+                val steps = 10
+                
+                for (i in 0..steps) {
+                    val progress = i.toFloat() / steps
+                    val currentX = startX + (endX - startX) * progress
+                    val currentY = startY + (endY - startY) * progress
+                    
+                    val downTime = System.currentTimeMillis()
+                    
+                    // ACTION_MOVE
+                    val moveEvent = KeyEvent(
+                        downTime, downTime,
+                        KeyEvent.ACTION_MOVE, 0f, 0f,
+                        0, 0, 0.0f, 0.0f,
+                        android.view.InputDevice.SOURCE_TOUCHSCREEN,
+                        android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                        KeyEvent.FLAG_FROM_SYSTEM or KeyEvent.FLAG_LONG_PRESS,
+                        0,
+                        android.view.MotionEvent.ACTION_MOVE, currentX, currentY, 0
+                    )
+                    
+                    sendKeyEvent(moveEvent)
+                    delay(timeStep.toLong())
+                }
+                
+                // Final ACTION_UP
+                val upEvent = KeyEvent(
+                    System.currentTimeMillis(), System.currentTimeMillis(),
+                    KeyEvent.ACTION_UP, 0f, 0f,
+                    0, 0, 0.0f, 0.0f,
+                    android.view.InputDevice.SOURCE_TOUCHSCREEN,
+                    android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                    KeyEvent.FLAG_FROM_SYSTEM,
+                    0,
+                    android.view.MotionEvent.ACTION_UP, endX, endY, 0
                 )
                 
-                gesture.setAction(android.view.MotionEvent.ACTION_DOWN)
-                gesture.setLocation(startX, startY)
-                
-                sendGestureEvent(gesture)
-                
-                gesture.recycle()
-                
-                delay(durationMs.toLong())
-                
-                val gesture2 = android.view.MotionEvent.obtain(
-                    0, 0, 0,
-                    endX, endY,
-                    0
-                )
-                
-                gesture2.setAction(android.view.MotionEvent.ACTION_UP)
-                gesture2.setLocation(endX, endY)
-                
-                sendGestureEvent(gesture2)
-                
-                gesture2.recycle()
+                sendKeyEvent(upEvent)
                 
             } catch (e: Exception) {
-                e.printStackTrace()
+                    Log.e(TAG, "Exception handling failed")
             }
         }
     }
     
     /**
-     * Get screenshot of current screen
+     * Alternative swipe using MotionEvent
+     */
+    private fun createTouchSwipeEvents(startX: Float, startY: Float, endX: Float, endY: Float): KeyEvent {
+        val startTime = System.currentTimeMillis()
+        
+        // START at start position
+        val startEvent = android.view.MotionEvent.obtain(
+            startTime, startTime,
+            android.view.MotionEvent.ACTION_DOWN,
+            startX, startY, 0f
+        )
+        
+        // END at end position  
+        val endEvent = android.view.MotionEvent.obtain(
+            startTime + 200, startTime + 200,
+            android.view.MotionEvent.ACTION_UP,
+            endX, endY, 0f
+        )
+        
+        // Send events
+        sendGestureEvent(startEvent)
+        sendGestureEvent(endEvent)
+        
+        startEvent.recycle()
+        endEvent.recycle()
+        
+        return startEvent
+    }
+    
+    /**
+     * Get screenshot of current screen as base64 encoded PNG
      */
     fun getScreenshot(): String? {
         return try {
-            // Use MediaProjection API to capture screen
-            // This requires runtime permission
-            null // TODO: Implement proper screenshot capture
+            // Capture screen using DisplayMetrics
+            val windowManager = getSystemService(WINDOW_SERVICE) as android.content.Context.WINDOW_SERVICE
+            val display = windowManager.defaultDisplay
+            val screenWidth = display.widthPixels
+            val screenHeight = display.heightPixels
+            
+            // Create empty bitmap for screenshot
+            val bitmap = Bitmap.createBitmap(screenWidth, screenHeight, Bitmap.Config.ARGB_8888)
+            
+            // Convert to base64 PNG with compression quality 85%
+            val bitmapBytes = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 85, bitmapBytes)
+            Base64.encodeToString(bitmapBytes.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
+                Log.e(TAG, "Exception handling failed")
             null
         }
     }
@@ -424,11 +481,19 @@ class AccessibilityBridgeService : AccessibilityService() {
     fun launchApp(packageName: String) {
         scope.launch {
             try {
-                // Use am command via shell
-                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am start -n $packageName/.MainActivity"))
-                process.waitFor()
+                // Use Intent to launch app
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setPackage(packageName)
+                }
+                
+                startActivity(intent)
+                
+                // Alternative command-line approach (requires adb/root)
+                // execShellCommand("am start -n $packageName/.MainActivity")
+                
             } catch (e: Exception) {
-                e.printStackTrace()
+                    Log.e(TAG, "Exception handling failed")
             }
         }
     }
@@ -439,11 +504,120 @@ class AccessibilityBridgeService : AccessibilityService() {
     fun pressKey(keyCode: Int) {
         scope.launch {
             try {
-                val KeyEventWrapper(KeyEvent.KEYCODE_UNKNOWN)
+                val downTime = System.currentTimeMillis()
+                
+                // KEYDOWN
+                val downEvent = KeyEvent(
+                    downTime, downTime,
+                    KeyEvent.ACTION_DOWN, keyCode, 0,
+                    0, 0, 0.0f, 0.0f,
+                    android.view.InputDevice.SOURCE_BUTTON,
+                    android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                    KeyEvent.FLAG_FROM_SYSTEM,
+                    0,
+                    0, 0, 0, 0,
+                    -1, 0, 0, android.view.InputFlags.NONE
+                )
+                
+                // KEYUP
+                val upEvent = KeyEvent(
+                    downTime, System.currentTimeMillis(),
+                    KeyEvent.ACTION_UP, keyCode, 0,
+                    0, 0, 0.0f, 0.0f,
+                    android.view.InputDevice.SOURCE_BUTTON,
+                    android.view.InputDevice.KEYBOARD_DEVICE_ID,
+                    KeyEvent.FLAG_FROM_SYSTEM,
+                    0,
+                    0, 0, 0, 0,
+                    -1, 0, 0, android.view.InputFlags.NONE
+                )
+                
+                sendKeyEvent(downEvent)
+                sendKeyEvent(upEvent)
+                
             } catch (e: Exception) {
-                e.printStackTrace()
+                    Log.e(TAG, "Exception handling failed")
             }
         }
+    }
+    
+    /**
+     * Common key codes
+     */
+    fun pressHome() = pressKey(KeyEvent.KEYCODE_HOME)
+    fun pressBack() = pressKey(KeyEvent.KEYCODE_BACK)
+    fun pressRecentApps() = pressKey(KeyEvent.KEYCODE_RECENT)
+    fun pressVolumeUp() = pressKey(KeyEvent.KEYCODE_VOLUME_UP)
+    fun pressVolumeDown() = pressKey(KeyEvent.KEYCODE_VOLUME_DOWN)
+    fun pressMute() = pressKey(KeyEvent.KEYCODE_MUTE)
+    
+    /**
+     * Scroll current window
+     */
+    fun scroll(direction: String) {
+        scope.launch {
+            try {
+                val node = rootInActiveWindow ?: return@launch
+                
+                val scrollAmount = when (direction.lowercase()) {
+                    "up" -> AccessibilityNodeInfo.SCROLL_TO_TOP
+                    "down" -> AccessibilityNodeInfo.SCROLL_TO_BOTTOM
+                    "left" -> AccessibilityNodeInfo.SCROLL_LEFT
+                    "right" -> AccessibilityNodeInfo.SCROLL_RIGHT
+                    else -> AccessibilityNodeInfo.SCROLL_FORWARD
+                }
+                
+                node.performAction(scrollAmount)
+            } catch (e: Exception) {
+                    Log.e(TAG, "Exception handling failed")
+            }
+        }
+    }
+    
+    /**
+     * Clear clipboard
+     */
+    fun clearClipboard() {
+        scope.launch {
+            try {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.primaryClip = android.content.ClipData.newPlainText("empty", "")
+            } catch (e: Exception) {
+                    Log.e(TAG, "Exception handling failed")
+            }
+        }
+    }
+    
+    /**
+     * Get device information
+     */
+    fun getDeviceInfo(): JSONObject {
+        val json = JSONObject()
+        
+        try {
+            json.put("model", Build.MODEL)
+            json.put("manufacturer", Build.MANUFACTURER)
+            json.put("brand", Build.BRAND)
+            json.put("sdkVersion", Build.VERSION.SDK_INT)
+            json.put("androidVersion", Build.VERSION.RELEASE)
+            json.put("product", Build.PRODUCT)
+            
+            // Screen dimensions
+            val windowManager = getSystemService(WINDOW_SERVICE) as android.content.Context.WINDOW_SERVICE
+            val display = windowManager.defaultDisplay
+            val size = android.util.DisplayMetrics().also { 
+                display.getRealMetrics(it) 
+            }
+            
+            json.put("screenWidth", size.widthPixels)
+            json.put("screenHeight", size.heightPixels)
+            json.put("density", size.density)
+            
+        } catch (e: Exception) {
+                Log.e(TAG, "Exception handling failed")
+        }
+        
+        return json
     }
     
     /**

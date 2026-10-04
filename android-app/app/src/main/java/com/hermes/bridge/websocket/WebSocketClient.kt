@@ -12,7 +12,7 @@ import javax.inject.Inject
 /**
  * WebSocket client for maintaining persistent connection to Hermes Agent relay server
  */
-class WebSocketClient @Inject constructor() {
+class WebSocketClient {
     
     companion object {
         private const val TAG = "WebSocketClient"

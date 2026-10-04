@@ -22,8 +22,12 @@ class MainViewModel : ViewModel() {
         _serverUrl.value = newUrl
     }
     
-    fun setPairingCode(code: String?) {
-        _pairingCode.value = code
+    fun updatePairingCode(code: String?) {
+        if (code == null || code.isEmpty()) {
+            _pairingCode.value = null
+        } else {
+            _pairingCode.value = code
+        }
     }
     
     fun isValidConfig(): Boolean {
