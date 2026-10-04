@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network -->
+    <!-- Talks to the Hermes API server over the network -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Foreground service to keep the WebSocket alive -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Battery optimization exemption for continuous operation -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- QR scanning from the setup page served by the npm pack -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:name=".HermesBridgeApplication"
@@ -34,25 +30,12 @@
             </intent-filter>
         </activity>
 
-        <!-- Accessibility service: performs gestures, reads UI tree -->
-        <service
-            android:name=".service.AccessibilityBridgeService"
-            android:exported="true"
-            android:label="@string/accessibility_service_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.accessibility.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
-        </service>
-
-        <!-- Foreground service: holds the WebSocket connection -->
-        <service
-            android:name=".service.WebSocketConnectionService"
+        <activity
+            android:name=".ui.QrScanActivity"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.HermesBridge" />
 
     </application>
 
