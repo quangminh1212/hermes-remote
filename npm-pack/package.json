@@ -26,7 +26,7 @@
   },
   "scripts": {
     "start": "node bin/cli.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",
