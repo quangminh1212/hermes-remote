@@ -84,7 +84,7 @@ _drv..*
 # Keystore files
 *.jks
 *.keystore
-!keystore.properties
+keystore.properties
 
 # Secrets and credentials
 credentials.xml
