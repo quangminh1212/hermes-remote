@@ -41,7 +41,7 @@
 ## Việc CÒN LẠI (chưa làm)
 1. **Cài `app-release.apk` lên điện thoại Android thật** + quét QR thật đầu-cuối (emulator `aosp_atd` không có camera → chưa test quét QR bằng mắt). APK release đã build + ký sẵn. **Auto-update cũng cần xác nhận cú bấm "Cập nhật" trên máy thật** (emulator không cài được qua UI).
 2. (Tùy chọn) Publish npm pack lên registry thật.
-3. Kiểm tra `/api/connect` khớp `ConnectPayload.kt` khi có profile Hermes đặt tên (hiện `profile` để trống dùng key top-level `.env`). Profiles đang có: `dalek`, `doraemon`, `heimeringer`.
+3. ~~Kiểm tra `/api/connect` khớp `ConnectPayload.kt`~~ → **ĐÃ XONG + CẢI THIỆN (session 3):** `/api/connect` khớp đúng `ConnectPayload.kt`. Phát hiện + sửa lỗ hổng thật: `profile` bị **hardcode `""`** ở cả `cli.js` lẫn `server.js` → QR không bao giờ chọn được profile dù máy có `dalek`, `doraemon`, `heimeringer`. **Thêm `--profile <tên>`:** validate theo `listProfiles()`, tên sai → fallback về key gốc kèm cảnh báo; tên đúng → luồn vào cả payload ASCII QR lẫn `/api/connect`. Verify thật: HTTP round-trip `profile="doraemon"` qua server sống OK; test 5→**7/7 PASS**.
 4. ~~SỬA BUG LAYOUT nút "Git status" bị cắt cụt~~ → **ĐÃ SỬA (session 3):** thực ra row cũ đã có `horizontalScroll` (nút cuối cuộn tới được, chỉ là UI dump báo bounds ngoài màn hình — giống bug harness `jks:20`). Đổi sang **`FlowRow`** để nút tự xuống dòng, không nút nào bị khuất. Đã build lại OK.
 5. ~~Bỏ `"web/"` khỏi `files`~~ → **ĐÃ XONG (session 3):** bỏ khỏi `package.json`, xóa luôn thư mục `npm-pack/web/` rỗng. `npm pack --dry-run` = 7 files, 9.3 kB.
 6. ~~`npm test` treo/không chạy~~ → **ĐÃ SỬA (session 3):** `"test": "node --test test/"` fail `MODULE_NOT_FOUND` trên Node 26 (nó coi arg là module, không phải dir). Đổi sang `node --test test/*.test.js` → **5/5 PASS** (`test/pack.test.js` đã có sẵn từ trước nhưng chưa từng chạy được).
@@ -63,6 +63,7 @@
 ## Trạng thái git (session 3)
 - **ĐÃ CÓ REMOTE:** `origin` = `https://github.com/quangminh1212/hermes-remote.git` (PUBLIC) → push được.
 - Commit mới nhất (mới nhất ở trên):
+  - `feat(npm-pack): add --profile to pair the phone as a Hermes profile`
   - `feat(android): add self-update via GitHub Releases` (banner + tải + cài, 12 test mới)
   - `6c4fffc` feat(npm-pack): add hermes-remote pairing CLI
   - `f603926` feat(android): rewrite app as QR-paired HTTP/SSE chat client
