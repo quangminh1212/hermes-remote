@@ -1,8 +1,10 @@
 package com.hermes.bridge.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -13,10 +15,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,11 +29,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -54,15 +61,23 @@ import com.hermes.bridge.model.ChatMessage
 import com.hermes.bridge.model.ConnectPayload
 import com.hermes.bridge.model.DeliveryState
 import com.hermes.bridge.model.ServerConfig
+import com.hermes.bridge.updater.ApkDownloader
+import com.hermes.bridge.updater.UpdateInstaller
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels {
-        MainViewModel.factory(ConfigStore(applicationContext))
+        MainViewModel.factory(
+            ConfigStore(applicationContext),
+            getSharedPreferences("hermes_bridge_update", Context.MODE_PRIVATE),
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Kick off an update check when the app opens (rate-limited to 6h by
+        // the view model, so repeated launches are cheap).
+        viewModel.checkForUpdate()
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -128,6 +143,32 @@ private fun ChatScreen(viewModel: MainViewModel) {
         ) {
             ConnectionBanner(state.config, state.connectionHint)
 
+            if (state.update.available != null) {
+                UpdateBanner(
+                    update = state.update,
+                    onDismiss = viewModel::dismissUpdate,
+                    onUpdate = {
+                        viewModel.downloadUpdate(
+                            downloader = ApkDownloader(context),
+                            canInstall = { UpdateInstaller.canInstall(context) },
+                            onReady = { file ->
+                                if (!UpdateInstaller.install(context, file)) {
+                                    UpdateInstaller.openInstallPermissionSettings(context)
+                                }
+                            },
+                            onNeedsPermission = {
+                                Toast.makeText(
+                                    context,
+                                    "Cần bật \"Cho phép cài đặt ứng dụng\" rồi thử lại",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                UpdateInstaller.openInstallPermissionSettings(context)
+                            },
+                        )
+                    },
+                )
+            }
+
             Box(modifier = Modifier.weight(1f)) {
                 if (state.messages.isEmpty()) {
                     EmptyState(onScanQr = startScan, scanError = scanError ?: state.connectionHint)
@@ -173,6 +214,54 @@ private fun ChatScreen(viewModel: MainViewModel) {
                 startScan()
             },
         )
+    }
+}
+
+@Composable
+private fun UpdateBanner(
+    update: UpdateUiState,
+    onDismiss: () -> Unit,
+    onUpdate: () -> Unit,
+) {
+    val info = update.available ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Có bản cập nhật ${info.versionName}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (update.downloading) {
+                Spacer(Modifier.height(6.dp))
+                val label = update.progress?.let { "$it%" } ?: "Đang tải…"
+                LinearProgressIndicator(
+                    progress = (update.progress ?: 0) / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+            update.error?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss, enabled = !update.downloading) {
+                    Text("Để sau")
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = onUpdate, enabled = !update.downloading) {
+                    Text(if (update.downloading) "Đang tải…" else "Cập nhật")
+                }
+            }
+        }
     }
 }
 

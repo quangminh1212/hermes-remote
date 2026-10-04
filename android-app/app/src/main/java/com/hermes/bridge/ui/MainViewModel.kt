@@ -3,6 +3,7 @@ package com.hermes.bridge.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.hermes.bridge.BuildConfig
 import com.hermes.bridge.data.ChatApi
 import com.hermes.bridge.data.ConfigStore
 import com.hermes.bridge.data.StreamEvent
@@ -10,6 +11,9 @@ import com.hermes.bridge.model.ChatMessage
 import com.hermes.bridge.model.DeliveryState
 import com.hermes.bridge.model.Role
 import com.hermes.bridge.model.ServerConfig
+import com.hermes.bridge.updater.ApkDownloader
+import com.hermes.bridge.updater.UpdateChecker
+import com.hermes.bridge.updater.UpdateInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,16 +29,113 @@ data class ChatUiState(
     val isStreaming: Boolean = false,
     val config: ServerConfig = ServerConfig.DEFAULT,
     val connectionHint: String? = null,
+    val update: UpdateUiState = UpdateUiState(),
 )
+
+/** State of the self-update flow shown as a banner/dialog. */
+data class UpdateUiState(
+    val available: UpdateInfo? = null,
+    val downloading: Boolean = false,
+    val progress: Int? = null,
+    val lastCheckedAt: Long = 0L,
+    val error: String? = null,
+    val readyToInstall: Boolean = false,
+)
+
+/** How often to re-check in the background once the app is open. */
+private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6h
 
 /** Drives the chat: holds transcript, config, and streams replies. */
 class MainViewModel(
     private val configStore: ConfigStore,
     private val api: ChatApi = ChatApi(),
+    private val updateChecker: UpdateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
+    private val updatePrefs: android.content.SharedPreferences? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState(config = configStore.load()))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
+
+    /** True when an update banner should be shown to the user. */
+    val hasUpdate: Boolean get() = _state.value.update.available != null
+
+    /**
+     * Check for a newer release, at most once per [UPDATE_CHECK_INTERVAL_MS]
+     * unless [force] is set. Safe to call on every app start; network and parse
+     * failures are swallowed into [UpdateUiState.error] and never surface UI.
+     */
+    fun checkForUpdate(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val last = updatePrefs?.getLong(KEY_LAST_UPDATE_CHECK, 0L) ?: 0L
+        if (!force && now - last < UPDATE_CHECK_INTERVAL_MS) return
+
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                runCatching { updateChecker.check() }.getOrNull()
+            }
+            updatePrefs?.edit()?.putLong(KEY_LAST_UPDATE_CHECK, now)?.apply()
+            _state.value = _state.value.copy(
+                update = _state.value.update.copy(
+                    available = info,
+                    lastCheckedAt = now,
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Download the pending update, then report whether the installer can be
+     * launched. On [onReady] the caller runs [UpdateInstaller].
+     */
+    fun downloadUpdate(
+        downloader: ApkDownloader,
+        canInstall: () -> Boolean,
+        onReady: (java.io.File) -> Unit,
+        onNeedsPermission: () -> Unit,
+    ) {
+        val info = _state.value.update.available ?: return
+        if (_state.value.update.downloading) return
+
+        _state.value = _state.value.copy(
+            update = _state.value.update.copy(downloading = true, progress = null, error = null),
+        )
+        viewModelScope.launch {
+            val file = withContext(Dispatchers.IO) {
+                runCatching {
+                    downloader.download(info) { pct ->
+                        _state.value = _state.value.copy(
+                            update = _state.value.update.copy(progress = pct),
+                        )
+                    }
+                }
+            }
+            file.fold(
+                onSuccess = {
+                    _state.value = _state.value.copy(
+                        update = _state.value.update.copy(
+                            downloading = false, progress = 100, readyToInstall = true,
+                        ),
+                    )
+                    if (canInstall()) onReady(it) else onNeedsPermission()
+                },
+                onFailure = { e ->
+                    _state.value = _state.value.copy(
+                        update = _state.value.update.copy(
+                            downloading = false, progress = null,
+                            error = e.message ?: "Tải bản cập nhật thất bại",
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    /** Clear the update banner (e.g. user dismissed this version). */
+    fun dismissUpdate() {
+        _state.value = _state.value.copy(update = UpdateUiState(lastCheckedAt = _state.value.update.lastCheckedAt))
+    }
+
 
     /** Quick-action prompts shown as chips: label to prompt. */
     val quickActions: List<Pair<String, String>> = listOf(
@@ -173,11 +274,20 @@ class MainViewModel(
     private fun newId(): String = UUID.randomUUID().toString()
 
     companion object {
-        fun factory(store: ConfigStore): ViewModelProvider.Factory =
+        const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+
+        fun factory(
+            store: ConfigStore,
+            updatePrefs: android.content.SharedPreferences? = null,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    MainViewModel(store) as T
+                    MainViewModel(
+                        configStore = store,
+                        updateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
+                        updatePrefs = updatePrefs,
+                    ) as T
             }
     }
 }

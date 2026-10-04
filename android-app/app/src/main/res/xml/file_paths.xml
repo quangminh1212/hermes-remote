@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths shared through the FileProvider named "${applicationId}.fileprovider".
+  The updater writes downloaded APKs to cacheDir/updates, so that directory
+  must be exposed here or the package installer cannot read the file.
+-->
+<paths>
+    <cache-path name="updates" path="updates/" />
+    <external-cache-path name="ext_updates" path="updates/" />
+</paths>
