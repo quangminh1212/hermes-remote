@@ -26,7 +26,8 @@ test("renders a complete, well-formed document", () => {
   assert.match(html, /<\/html>\s*$/);
   assert.match(html, /<meta charset="utf-8">/);
   assert.match(html, /<meta name="viewport"/);
-  assert.match(html, /lang="vi"/);
+  // English is the default locale when no --lang is given.
+  assert.match(html, /lang="en"/);
 });
 
 test("shows the QR image and the server details", () => {
@@ -39,14 +40,13 @@ test("shows the QR image and the server details", () => {
 
 test("falls back to a default label when model and profile are missing", () => {
   const html = renderPage({ baseUrl: "http://x", fallbackUrl: "http://y" });
-  assert.match(html, /\(mặc định\)/);
-  assert.match(html, /mặc định \(\.env\)/);
+  assert.match(html, /\(default\)/);
 });
 
 test("shows an explicit profile when one is set", () => {
   const html = renderPage({ ...SAMPLE, profile: "dalek" });
   assert.ok(html.includes("dalek"));
-  assert.ok(!html.includes("mặc định (.env)"));
+  assert.ok(!html.includes("(default)"));
 });
 
 test("escapes user-influenced values in text and attributes", () => {

@@ -55,11 +55,11 @@ function parseEnv(text) {
 }
 
 /** Read the Hermes config: apiKey, host, port, model, profiles. */
-function readHermesConfig(envPath) {
+function readHermesConfig(envPath, t = (k) => k) {
   const file = envPath || findEnvFile();
   if (!file) {
     throw new Error(
-      "Không tìm thấy file .env của Hermes. Đặt biến HERMES_ENV_FILE hoặc cài Hermes trước."
+      t("cfg_no_env")
     );
   }
   const raw = fs.readFileSync(file, "utf8");
@@ -72,7 +72,7 @@ function readHermesConfig(envPath) {
 
   if (!apiKey) {
     throw new Error(
-      "API_SERVER_KEY trống trong " + file + " — bật API server Hermes trước."
+      t("cfg_no_key", file)
     );
   }
 

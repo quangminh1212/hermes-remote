@@ -31,6 +31,8 @@ const TOKENS = {
   error: "#F85149",
 };
 
+const { translator, resolveLang } = require("./i18n");
+
 /** Escape a value for safe interpolation into HTML text or an attribute. */
 function esc(s) {
   return String(s).replace(
@@ -136,14 +138,29 @@ const STYLES = `
  * @returns {string} full HTML document
  */
 function renderPage(p) {
-  const profile = p.profile && String(p.profile).trim() ? p.profile : "mặc định (.env)";
+  const lang = resolveLang(p.lang);
+  const t = translator(lang);
+
+  const profile =
+    p.profile && String(p.profile).trim() ? p.profile : t("page_default");
+  const model = p.model && String(p.model).trim() ? p.model : t("page_default");
+
+  // Show the agents the phone can pick from, when the bridge is running.
+  const agents = Array.isArray(p.agents) ? p.agents : [];
+  const agentRow = agents.length
+    ? `<div class="row"><span class="k">${esc(t("page_agents"))}</span>` +
+      `<span class="v">${agents.map(esc).join(" · ")}</span></div>`
+    : "";
+  const agentHint = agents.length
+    ? `<p class="foot agents">${esc(t("page_agents_hint"))}</p>`
+    : "";
 
   return `<!doctype html>
-<html lang="vi">
+<html lang="${esc(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hermes Remote — Quét QR để kết nối</title>
+<title>${esc(t("page_title"))}</title>
 <style>${STYLES}</style>
 </head>
 <body>
@@ -153,26 +170,28 @@ function renderPage(p) {
       <span class="brand-name">Hermes Remote</span>
     </div>
 
-    <div class="pill"><span class="dot"></span>Đang chạy</div>
-    <h1>Quét mã để kết nối</h1>
-    <p class="sub">Mở app <b>Hermes Remote</b> trên điện thoại và quét mã bên dưới.</p>
+    <div class="pill"><span class="dot"></span>${esc(t("page_running"))}</div>
+    <h1>${esc(t("page_heading"))}</h1>
+    <p class="sub">${t("page_sub")}</p>
 
-    <div class="qr"><img src="/qr.png" alt="Mã QR kết nối" width="300" height="300"></div>
+    <div class="qr"><img src="/qr.png" alt="QR" width="300" height="300"></div>
 
     <div class="steps">
-      <div><span class="n">1</span>Mở app <b>Hermes Remote</b> trên Android.</div>
-      <div><span class="n">2</span>Bấm <b>Quét QR</b> và hướng camera vào mã trên.</div>
-      <div><span class="n">3</span>App tự điền server, key và <b>kết nối ngay</b>.</div>
+      <div><span class="n">1</span>${t("page_step1")}</div>
+      <div><span class="n">2</span>${t("page_step2")}</div>
+      <div><span class="n">3</span>${t("page_step3")}</div>
     </div>
 
     <div class="meta">
-      <div class="row"><span class="k">Server (public)</span><span class="v">${esc(p.baseUrl)}</span></div>
-      <div class="row"><span class="k">Server (LAN dự phòng)</span><span class="v">${esc(p.fallbackUrl)}</span></div>
-      <div class="row"><span class="k">Model</span><span class="v">${esc(p.model || "(mặc định)")}</span></div>
-      <div class="row"><span class="k">Profile</span><span class="v">${esc(profile)}</span></div>
+      <div class="row"><span class="k">${esc(t("page_server_public"))}</span><span class="v">${esc(p.baseUrl)}</span></div>
+      <div class="row"><span class="k">${esc(t("page_server_lan"))}</span><span class="v">${esc(p.fallbackUrl)}</span></div>
+      <div class="row"><span class="k">${esc(t("page_model"))}</span><span class="v">${esc(model)}</span></div>
+      <div class="row"><span class="k">${esc(t("page_profile"))}</span><span class="v">${esc(profile)}</span></div>
+      ${agentRow}
     </div>
 
-    <p class="foot">Dữ liệu kết nối: <code>/api/connect</code></p>
+    ${agentHint}
+    <p class="foot">${esc(t("page_footer"))} <code>/api/connect</code></p>
   </main>
 </body>
 </html>`;

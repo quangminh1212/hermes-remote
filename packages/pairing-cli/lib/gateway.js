@@ -63,20 +63,18 @@ function restartGatewayDetached() {
  * Ensure the API server is healthy. Returns { started: bool, via: string }.
  * If the gateway is already healthy it does nothing.
  */
-async function ensureGateway(port, log = () => {}, maxWaitMs = 60000) {
+async function ensureGateway(port, log = () => {}, maxWaitMs = 60000, t = (k) => k) {
   let h = await probeHealth(port);
   if (h.ok) {
-    log("Gateway đã chạy sẵn (health 200).");
+    log(t("gateway_up"));
     return { started: false, via: "already" };
   }
 
   if (!hasHermesCli()) {
-    throw new Error(
-      "Gateway chưa chạy và không tìm thấy lệnh `hermes`. Hãy bật Hermes gateway rồi thử lại."
-    );
+    throw new Error(t("gateway_no_cli"));
   }
 
-  log("Gateway chưa phản hồi — đang khởi động lại (detached)...");
+  log(t("gateway_restarting"));
   restartGatewayDetached();
 
   const deadline = Date.now() + maxWaitMs;
@@ -84,11 +82,11 @@ async function ensureGateway(port, log = () => {}, maxWaitMs = 60000) {
     await sleep(3000);
     h = await probeHealth(port);
     if (h.ok) {
-      log("Gateway đã lên (health 200).");
+      log(t("gateway_ready"));
       return { started: true, via: "restart" };
     }
   }
-  throw new Error("Gateway không lên sau " + maxWaitMs / 1000 + "s. Kiểm tra log Hermes.");
+  throw new Error(t("gateway_timeout", maxWaitMs / 1000));
 }
 
 module.exports = { probeHealth, ensureGateway, hasHermesCli, restartGatewayDetached };

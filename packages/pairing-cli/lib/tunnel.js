@@ -77,7 +77,7 @@ function download(url, dest, redirects = 0) {
 }
 
 /** Download and cache the cloudflared binary. Returns its path. */
-async function ensureCloudflared(log = () => {}) {
+async function ensureCloudflared(log = () => {}, t = (k) => k) {
   const existing = resolveCloudflared();
   if (existing) return existing;
 
@@ -87,18 +87,18 @@ async function ensureCloudflared(log = () => {}) {
   const isTgz = asset.endsWith(".tgz");
   const target = path.join(binDir(), isTgz ? "cloudflared.tgz" : localBinaryName());
 
-  log("Đang tải cloudflared (" + asset + ")...");
+  log(t("tun_downloading", asset));
   await download(base + asset, target);
 
   if (isTgz) {
-    log("Giải nén cloudflared...");
+    log(t("tun_extracting"));
     const r = spawnSync("tar", ["xzf", target, "-C", binDir()]);
-    if (r.status !== 0) throw new Error("giải nén cloudflared thất bại");
+    if (r.status !== 0) throw new Error(t("tun_unzip_failed"));
     fs.rmSync(target, { force: true });
   }
 
   const bin = path.join(binDir(), localBinaryName());
-  if (!fs.existsSync(bin)) throw new Error("không thấy cloudflared sau khi tải");
+  if (!fs.existsSync(bin)) throw new Error(t("tun_missing_bin"));
   if (process.platform !== "win32") fs.chmodSync(bin, 0o755);
   return bin;
 }
@@ -107,7 +107,7 @@ async function ensureCloudflared(log = () => {}) {
  * Start a quick tunnel to localUrl. Resolves with { url, proc } once the public
  * URL appears in cloudflared's output (or rejects on timeout).
  */
-function startTunnel(localUrl, binPath, timeoutMs = 45000) {
+function startTunnel(localUrl, binPath, timeoutMs = 45000, t = (k) => k) {
   return new Promise((resolve, reject) => {
     const proc = spawn(binPath, ["tunnel", "--url", localUrl, "--no-autoupdate"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -120,7 +120,7 @@ function startTunnel(localUrl, binPath, timeoutMs = 45000) {
       try {
         proc.kill();
       } catch (_) {}
-      reject(new Error("Hết thời gian chờ URL tunnel"));
+      reject(new Error(t("tun_url_timeout")));
     }, timeoutMs);
 
     const onData = (buf) => {
@@ -146,7 +146,7 @@ function startTunnel(localUrl, binPath, timeoutMs = 45000) {
       if (!done) {
         done = true;
         clearTimeout(timer);
-        reject(new Error("cloudflared thoát sớm (code " + code + ")"));
+        reject(new Error(t("tun_exited", code)));
       }
     });
   });
