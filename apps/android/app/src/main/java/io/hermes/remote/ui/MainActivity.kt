@@ -58,9 +58,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.hermes.remote.R
 import io.hermes.remote.data.ConfigStore
 import io.hermes.remote.model.ChatMessage
 import io.hermes.remote.model.ConnectPayload
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
             ConfigStore(applicationContext),
             getSharedPreferences("hermes_bridge_update", Context.MODE_PRIVATE),
             voiceController,
+            AndroidStringProvider(applicationContext),
         )
     }
 
@@ -213,7 +216,7 @@ private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
                 scanError = null
                 viewModel.applyConnectPayload(payload)
             } else {
-                scanError = "Mã QR không phải của Hermes Remote"
+                scanError = context.getString(R.string.qr_screen_bad_code)
             }
         }
     }
@@ -235,7 +238,7 @@ private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
                     IconButton(onClick = { showSettings = true }) {
                         Text("⚙", style = MaterialTheme.typography.titleLarge)
                     }
-                    TextButton(onClick = viewModel::clearChat) { Text("Xoá") }
+                    TextButton(onClick = viewModel::clearChat) { Text(stringResource(R.string.chat_clear)) }
                 },
             )
         },
@@ -264,7 +267,7 @@ private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
                             onNeedsPermission = {
                                 Toast.makeText(
                                     context,
-                                    "Cần bật \"Cho phép cài đặt ứng dụng\" rồi thử lại",
+                                    context.getString(R.string.update_install_permission),
                                     Toast.LENGTH_LONG,
                                 ).show()
                                 UpdateInstaller.openInstallPermissionSettings(context)
@@ -360,7 +363,7 @@ private fun AssistantBanner(prompt: String?, onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("🎤 Từ Trợ lý Google", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.assistant_banner), style = MaterialTheme.typography.labelLarge)
                 Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
             TextButton(onClick = onDismiss) { Text("OK") }
@@ -381,15 +384,22 @@ private fun VoiceStatusBar(
         voice.enabled
     if (!visible) return
 
+    // Resolve every label up front: this `when` is a plain expression, not a
+    // composable scope, so stringResource() cannot be called inside the branches.
+    val labelListening = stringResource(R.string.voice_phase_listening)
+    val labelThinking = stringResource(R.string.voice_phase_thinking)
+    val labelSpeaking = stringResource(R.string.voice_phase_speaking)
+    val labelWaiting = stringResource(R.string.voice_status_waiting)
+
     val (label, container) = when (voice.phase) {
-        VoicePhase.LISTENING -> "🎙 Đang nghe…" to MaterialTheme.colorScheme.tertiaryContainer
-        VoicePhase.THINKING -> "⏳ Hermes đang xử lý…" to MaterialTheme.colorScheme.secondaryContainer
-        VoicePhase.SPEAKING -> "🔊 Đang đọc trả lời…" to MaterialTheme.colorScheme.primaryContainer
+        VoicePhase.LISTENING -> labelListening to MaterialTheme.colorScheme.tertiaryContainer
+        VoicePhase.THINKING -> labelThinking to MaterialTheme.colorScheme.secondaryContainer
+        VoicePhase.SPEAKING -> labelSpeaking to MaterialTheme.colorScheme.primaryContainer
         VoicePhase.IDLE -> {
             val msg = voice.statusMessage
             when {
                 !msg.isNullOrBlank() -> msg to MaterialTheme.colorScheme.surfaceVariant
-                voice.enabled -> "👂 Đang chờ \"Hey Hermes\"" to MaterialTheme.colorScheme.surfaceVariant
+                voice.enabled -> labelWaiting to MaterialTheme.colorScheme.surfaceVariant
                 else -> "" to MaterialTheme.colorScheme.surfaceVariant
             }
         }
@@ -415,7 +425,7 @@ private fun VoiceStatusBar(
             }
             when (voice.phase) {
                 VoicePhase.LISTENING ->
-                    TextButton(onClick = onStopListening) { Text("Dừng") }
+                    TextButton(onClick = onStopListening) { Text(stringResource(R.string.voice_stop)) }
                 VoicePhase.SPEAKING ->
                     TextButton(onClick = onStopSpeaking) { Text("Im") }
                 else -> Unit
@@ -441,12 +451,12 @@ private fun UpdateBanner(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                "Có bản cập nhật ${info.versionName}",
+                stringResource(R.string.update_available, info.versionName),
                 style = MaterialTheme.typography.titleMedium,
             )
             if (update.downloading) {
                 Spacer(Modifier.height(6.dp))
-                val label = update.progress?.let { "$it%" } ?: "Đang tải…"
+                val label = update.progress?.let { "$it%" } ?: stringResource(R.string.update_downloading)
                 LinearProgressIndicator(
                     progress = (update.progress ?: 0) / 100f,
                     modifier = Modifier.fillMaxWidth(),
@@ -461,11 +471,11 @@ private fun UpdateBanner(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onDismiss, enabled = !update.downloading) {
-                    Text("Để sau")
+                    Text(stringResource(R.string.update_later))
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = onUpdate, enabled = !update.downloading) {
-                    Text(if (update.downloading) "Đang tải…" else "Cập nhật")
+                    Text(stringResource(if (update.downloading) R.string.update_downloading else R.string.update_now))
                 }
             }
         }
@@ -501,11 +511,11 @@ private fun EmptyState(onScanQr: () -> Unit, scanError: String?) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("📷", style = MaterialTheme.typography.displayLarge)
             Text(
-                "Chạy `npx hermes-remote` trên máy tính,\nrồi quét mã QR trên trang mở ra để kết nối.",
+                stringResource(R.string.setup_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(16.dp),
             )
-            androidx.compose.material3.Button(onClick = onScanQr) { Text("Quét QR") }
+            androidx.compose.material3.Button(onClick = onScanQr) { Text(stringResource(R.string.setup_scan_qr_button)) }
             if (scanError != null) {
                 Text(
                     scanError,
@@ -536,7 +546,7 @@ private fun MessageBubble(msg: ChatMessage) {
         ) {
             Column(Modifier.padding(10.dp)) {
                 Text(
-                    text = if (isUser) "Bạn" else "Hermes",
+                    text = if (isUser) stringResource(R.string.chat_you) else "Hermes",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                 )
@@ -602,7 +612,7 @@ private fun InputBar(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Nhắn lệnh cho Hermes…") },
+            placeholder = { Text(stringResource(R.string.chat_placeholder)) },
             maxLines = 4,
             enabled = enabled,
         )
@@ -616,7 +626,7 @@ private fun InputBar(
         androidx.compose.material3.Button(
             onClick = onSend,
             enabled = enabled && value.isNotBlank(),
-        ) { Text("Gửi") }
+        ) { Text(stringResource(R.string.chat_send)) }
     }
 }
 
@@ -651,12 +661,12 @@ private fun SettingsSheet(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Cài đặt kết nối", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.titleLarge)
 
             androidx.compose.material3.OutlinedButton(
                 onClick = onScanQr,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("📷 Quét QR từ máy tính") }
+            ) { Text(stringResource(R.string.setup_scan_qr)) }
 
             OutlinedTextField(
                 value = url,
@@ -675,7 +685,7 @@ private fun SettingsSheet(
             OutlinedTextField(
                 value = profile,
                 onValueChange = { profile = it },
-                label = { Text("Profile (để trống = dùng key .env; hoặc dalek / doraemon / heimeringer)") },
+                label = { Text(stringResource(R.string.setup_profile_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -693,14 +703,16 @@ private fun SettingsSheet(
 
             androidx.compose.material3.Divider()
 
-            Text("Trợ lý giọng nói", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_voice_title), style = MaterialTheme.typography.titleMedium)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Nghe \"Hey Hermes\"", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.settings_wakeword_missing), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        if (voiceEnabled) "Đang bật — nói \"Hey Hermes\" để ra lệnh"
-                        else "Đang tắt — bấm micro trong app để nói",
+                        stringResource(
+                            if (voiceEnabled) R.string.settings_voice_on
+                            else R.string.settings_voice_off
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -712,7 +724,7 @@ private fun SettingsSheet(
                         if (on && !active) {
                             Toast.makeText(
                                 context,
-                                "Chưa cấu hình wake word — dùng nút micro",
+                                context.getString(R.string.settings_wakeword_missing),
                                 Toast.LENGTH_LONG,
                             ).show()
                         }
@@ -723,17 +735,17 @@ private fun SettingsSheet(
             OutlinedTextField(
                 value = porcupineKey,
                 onValueChange = { porcupineKey = it },
-                label = { Text("Picovoice AccessKey (cho \"Hey Hermes\", để trống = tắt)") },
+                label = { Text(stringResource(R.string.settings_access_key_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             androidx.compose.material3.OutlinedButton(
                 onClick = {
                     store.savePorcupineKey(porcupineKey)
-                    Toast.makeText(context, "Đã lưu AccessKey", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.setup_saved_access_key), Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Lưu AccessKey") }
+            ) { Text(stringResource(R.string.setup_save_access_key)) }
 
             androidx.compose.material3.Divider()
 
@@ -743,12 +755,12 @@ private fun SettingsSheet(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { onTest(current) }) {
-                    Text("Kiểm tra")
+                    Text(stringResource(R.string.setup_test))
                 }
                 androidx.compose.material3.Button(
                     onClick = { onSave(current) },
                     modifier = Modifier.weight(1f),
-                ) { Text("Lưu") }
+                ) { Text(stringResource(R.string.setup_save)) }
             }
         }
     }
@@ -768,36 +780,30 @@ private fun AssistantHelpSection() {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Dùng với Trợ lý Google", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.assistant_help_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Nói câu lệnh vào app, Hermes trên PC trả lời",
+                    stringResource(R.string.assistant_help_summary),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
             TextButton(onClick = { expanded = !expanded }) {
-                Text(if (expanded) "Ẩn" else "Xem")
+                Text(stringResource(if (expanded) R.string.assistant_help_hide else R.string.assistant_help_show))
             }
         }
 
         if (expanded) {
             Spacer(Modifier.height(4.dp))
             Text(
-                "Nói với Trợ lý Google:",
+                stringResource(R.string.assistant_help_say_to_assistant),
                 style = MaterialTheme.typography.labelLarge,
             )
             Text(
-                "• \"Hey Google, ask Hermes <câu hỏi>\"\n" +
-                    "• \"Ok Google, hỏi Hermes kiểm tra RAM\"\n\n" +
-                    "Chỉ mở app (không gửi lệnh):\n" +
-                    "• \"Hey Google, open Hermes\"",
+                stringResource(R.string.assistant_help_examples),
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Lưu ý: Trợ lý Google / Claude-Fable chỉ *chuyển câu lệnh* vào app, " +
-                    "não vẫn nằm trên Hermes PC. Cần bật \"Đọc trả lời\" để nghe " +
-                    "Hermes đọc kết quả. Nếu chưa thấy app trong Trợ lý lần đầu, " +
-                    "hãy mở app một lần rồi thử lại.",
+                stringResource(R.string.assistant_help_note),
                 style = MaterialTheme.typography.labelSmall,
             )
         }

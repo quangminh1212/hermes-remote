@@ -1,5 +1,7 @@
 package io.hermes.remote.voice
 
+import io.hermes.remote.R
+
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -78,7 +80,7 @@ class TtsSpeaker(context: Context) {
      */
     fun speak(text: String) {
         val engine = tts
-        val clean = sanitizeForSpeech(text)
+        val clean = sanitizeForSpeech(text, appContext.getString(R.string.tts_link_word))
         if (engine == null || !ready || clean.isBlank()) return
         engine.speak(clean, TextToSpeech.QUEUE_ADD, null, UTTERANCE_ID)
     }
@@ -109,9 +111,11 @@ class TtsSpeaker(context: Context) {
          * drop fenced code blocks, unwrap links, remove heading/list markers,
          * collapse whitespace, and cap the length.
          *
-         * Pure function — unit tested on the JVM.
+         * Pure function — unit tested on the JVM. [linkWord] is injected instead
+         * of read from resources so the text-to-speech output can be localised
+         * without giving this class an Android Context.
          */
-        fun sanitizeForSpeech(text: String): String {
+        fun sanitizeForSpeech(text: String, linkWord: String = "link"): String {
             if (text.isBlank()) return ""
 
             var s = text
@@ -122,9 +126,9 @@ class TtsSpeaker(context: Context) {
             // Inline code `x` -> x
             s = INLINE_CODE.replace(s, "$1")
 
-            // [label](url) -> label ; also bare URLs -> "(liên kết)"
+            // [label](url) -> label ; bare URLs -> the localised word for "link".
             s = MARKDOWN_LINK.replace(s, "$1")
-            s = BARE_URL.replace(s, "liên kết")
+            s = BARE_URL.replace(s, linkWord)
 
             // Headings, blockquotes, list bullets at line starts.
             s = LINE_PREFIX.replace(s, "")

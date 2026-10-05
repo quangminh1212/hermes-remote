@@ -27,9 +27,17 @@ class TtsSpeakerTest {
 
     @Test
     fun replacesBareUrls() {
-        val out = TtsSpeaker.sanitizeForSpeech("Vào https://example.com/path để xem.")
+        // The replacement word is localised and injected, so assert on the word
+        // that was passed in rather than on one hard-coded language.
+        val out = TtsSpeaker.sanitizeForSpeech("Vào https://example.com/path để xem.", "liên kết")
         assertFalse(out.contains("http"))
         assertTrue(out.contains("liên kết"))
+    }
+
+    @Test
+    fun usesTheInjectedLinkWord() {
+        assertTrue(TtsSpeaker.sanitizeForSpeech("see https://x.dev", "链接").contains("链接"))
+        assertTrue(TtsSpeaker.sanitizeForSpeech("see https://x.dev", "link").contains("link"))
     }
 
     @Test

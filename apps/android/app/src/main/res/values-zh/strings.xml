@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  简体中文 (values-zh).
+
+  values/strings.xml 的中文译本。键名必须与英文原文完全一致：缺少某个键时，
+  该处会在屏幕中间退回英文，看起来像 bug 而不像"未翻译"。
+
+  用语：界面统一用"你"，不用"您"（本应用是开发者工具，语气偏直接）。
+  错误提示尽量短，并说明下一步该做什么。
+-->
+<resources>
+    <string name="app_name">Hermes Remote</string>
+
+    <!-- ==================== 语音助手 ==================== -->
+    <string name="voice_notif_title">Hermes 助手</string>
+    <string name="voice_notif_listening">正在监听 \"Hey Hermes\"…</string>
+    <string name="voice_notif_unavailable">未配置唤醒词 — 请点应用内的麦克风说话</string>
+    <string name="voice_notif_stop">停止</string>
+    <string name="voice_channel_name">Hermes 语音助手</string>
+    <string name="voice_channel_desc">保持麦克风开启以监听 \"Hey Hermes\" 唤醒词</string>
+
+    <!-- ==================== Google 助理转交提示条 ==================== -->
+    <string name="assistant_banner">🎤 来自 Google 助理</string>
+
+    <!-- ==================== 语音状态 ==================== -->
+    <string name="voice_phase_listening">🎙 正在聆听…</string>
+    <string name="voice_phase_thinking">⏳ Hermes 正在处理…</string>
+    <string name="voice_phase_speaking">🔊 正在朗读回复…</string>
+    <string name="voice_status_waiting">👂 正在等待 \"Hey Hermes\"</string>
+    <string name="voice_stop">停止</string>
+
+    <!-- ==================== 聊天界面 ==================== -->
+    <string name="chat_clear">清空</string>
+    <string name="chat_you">你</string>
+    <string name="chat_placeholder">给 Hermes 发指令…</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_empty_reply">服务器没有返回内容</string>
+    <string name="chat_error_spoken">抱歉，出错了。%1$s</string>
+    <string name="chat_error_no_answer">抱歉，我没有答案。</string>
+
+    <!-- ==================== 连接 / 设置 ==================== -->
+    <string name="setup_title">连接设置</string>
+    <string name="setup_scan_qr">📷 扫描电脑上的二维码</string>
+    <string name="setup_scan_qr_button">扫描二维码</string>
+    <string name="setup_hint">在电脑上运行 `npx hermes-remote`，\n然后扫描打开页面上的二维码。</string>
+    <string name="setup_profile_label">Profile（留空 = 使用 .env 的密钥；或 dalek / doraemon / heimeringer）</string>
+    <string name="setup_save">保存</string>
+    <string name="setup_saved_access_key">AccessKey 已保存</string>
+    <string name="setup_save_access_key">保存 AccessKey</string>
+    <string name="setup_test">测试</string>
+
+    <!-- ==================== 扫码界面 ==================== -->
+    <string name="qr_screen_title">扫描二维码以连接</string>
+    <string name="qr_screen_prompt">将摄像头对准 Hermes Remote 页面上的二维码</string>
+    <string name="qr_screen_hint">在电脑上运行 `npx hermes-remote`，然后扫描打开的网页上的二维码。</string>
+    <string name="qr_screen_open_camera">打开摄像头</string>
+    <string name="qr_screen_back">返回</string>
+    <string name="qr_screen_bad_code">该二维码不是来自 Hermes Remote</string>
+
+    <!-- ==================== 语音设置 ==================== -->
+    <string name="settings_voice_title">语音助手</string>
+    <string name="settings_voice_on">已开启 — 说 \"Hey Hermes\" 下达指令</string>
+    <string name="settings_voice_off">已关闭 — 点应用内的麦克风说话</string>
+    <string name="settings_wakeword_missing">未配置唤醒词 — 请使用麦克风按钮</string>
+    <string name="settings_access_key_label">Picovoice AccessKey（用于 \"Hey Hermes\"，留空 = 关闭）</string>
+
+    <!-- ==================== Google 助理帮助 ==================== -->
+    <string name="assistant_help_title">配合 Google 助理使用</string>
+    <string name="assistant_help_summary">对应用说出指令，电脑上的 Hermes 来回答</string>
+    <string name="assistant_help_show">展开</string>
+    <string name="assistant_help_hide">收起</string>
+    <string name="assistant_help_say_to_assistant">对 Google 助理说：</string>
+    <string name="assistant_help_examples">• \"Hey Google, ask Hermes &lt;问题&gt;\"\n• \"Ok Google, ask Hermes to check RAM\"\n\n仅打开应用（不发送指令）：\n• \"Hey Google, open Hermes\"</string>
+    <string name="assistant_help_note">注意：Google 助理 / Claude-Fable 只负责把指令*转交*给应用，思考仍在你的 Hermes PC 上进行。需要开启"朗读回复"才能听到 Hermes 念出结果。如果首次在助理里找不到本应用，请先打开一次应用再试。</string>
+
+    <!-- ==================== 更新 ==================== -->
+    <string name="update_available">有可用更新 %1$s</string>
+    <string name="update_downloading">正在下载…</string>
+    <string name="update_later">稍后</string>
+    <string name="update_now">更新</string>
+    <string name="update_failed">下载更新失败</string>
+    <string name="update_install_permission">需要开启"允许安装应用"，然后重试</string>
+
+    <!-- ==================== 连接状态 ==================== -->
+    <string name="conn_missing_config">缺少 URL 或 API 密钥</string>
+    <string name="conn_ok">连接成功 — %1$d 个模型：%2$s</string>
+    <string name="conn_failed">无法连接（请检查 URL、密钥，以及服务器是否在运行）</string>
+
+    <!-- ==================== 语音错误 ==================== -->
+    <string name="voice_err_not_heard">没听清，请再说一次。</string>
+    <string name="voice_err_audio">录音出错，请重试。</string>
+    <string name="voice_err_client">识别器正忙，请重试。</string>
+    <string name="voice_err_permission">没有麦克风权限。请在系统设置中开启。</string>
+    <string name="voice_err_network_timeout">语音识别时网络出错。</string>
+    <string name="voice_err_no_match">没听清，请再说一次。</string>
+    <string name="voice_err_busy">识别正忙，请稍后再试。</string>
+    <string name="voice_err_server">识别服务器返回错误。</string>
+    <string name="voice_err_speech_timeout">没有听到声音。请重试。</string>
+    <string name="voice_err_unknown">无法识别语音。请重试。</string>
+    <string name="voice_err_no_recognizer">此设备没有语音识别器</string>
+    <string name="voice_wakeword_not_set">未配置唤醒词 — 点麦克风说话</string>
+
+    <!-- ==================== 网络错误 ==================== -->
+    <string name="net_no_config">未配置 URL 或 API 密钥</string>
+    <string name="net_empty_body">服务器返回了空响应</string>
+    <string name="net_connect_failed">连接错误：%1$s</string>
+    <string name="net_no_content">无内容</string>
+
+    <!-- ==================== 快捷指令 ==================== -->
+    <string name="quick_status_title">机器状态</string>
+    <string name="quick_status_prompt">快速检查我电脑的状态：CPU、内存和剩余磁盘空间。</string>
+    <string name="quick_files_title">文件列表</string>
+    <string name="quick_files_prompt">列出我当前文件夹里的文件。</string>
+    <string name="quick_test_title">运行测试</string>
+    <string name="quick_test_prompt">运行当前项目的测试套件并总结结果。</string>
+    <string name="quick_git_title">Git 状态</string>
+    <string name="quick_git_prompt">告诉我当前项目的 git 状态。</string>
+    <string name="quick_shutdown_title">关机</string>
+    <string name="quick_shutdown_prompt">先向我确认，然后 60 秒后关机。</string>
+    <string name="tts_link_word">链接</string>
+</resources>

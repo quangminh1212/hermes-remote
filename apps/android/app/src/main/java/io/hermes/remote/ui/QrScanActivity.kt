@@ -19,6 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.zxing.integration.android.IntentIntegrator
+import io.hermes.remote.R
+import io.hermes.remote.ui.theme.XLabTheme
+import androidx.compose.ui.res.stringResource
 
 /**
  * Full-screen QR scanner. Uses ZXing's embedded capture activity so we don't
@@ -32,7 +35,7 @@ class QrScanActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            XLabTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ScannerPrompt(
                         onScan = { startScan() },
@@ -49,7 +52,7 @@ class QrScanActivity : ComponentActivity() {
         scannerStarted = true
         IntentIntegrator(this)
             .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-            .setPrompt("Hướng camera vào mã QR trên trang Hermes Remote")
+            .setPrompt(getString(R.string.qr_screen_prompt))
             .setBeepEnabled(false)
             .setOrientationLocked(false)
             .initiateScan()
@@ -94,18 +97,18 @@ private fun ScannerPrompt(onScan: () -> Unit, onCancel: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Quét QR để kết nối", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.qr_screen_title), style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Chạy `npx hermes-remote` trên máy tính, rồi quét mã QR trên trang web mở ra.",
+            stringResource(R.string.qr_screen_hint),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(vertical = 16.dp),
         )
-        Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) { Text("Mở camera") }
+        Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.qr_screen_open_camera)) }
         OutlinedButton(
             onClick = onCancel,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-        ) { Text("Quay lại") }
+        ) { Text(stringResource(R.string.qr_screen_back)) }
     }
 }

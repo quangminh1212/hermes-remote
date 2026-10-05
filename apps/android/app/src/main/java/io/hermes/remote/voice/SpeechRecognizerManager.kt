@@ -1,5 +1,7 @@
 package io.hermes.remote.voice
 
+import io.hermes.remote.R
+
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -123,7 +125,7 @@ class SpeechRecognizerManager(private val context: Context) {
             val text = firstResult(results)
             listening = false
             if (text.isNullOrBlank()) {
-                listener?.onError("Không nghe rõ, bạn thử lại nhé.")
+                listener?.onError(context.getString(R.string.voice_err_not_heard))
             } else {
                 listener?.onFinal(text)
             }
@@ -132,7 +134,7 @@ class SpeechRecognizerManager(private val context: Context) {
 
         override fun onError(error: Int) {
             listening = false
-            listener?.onError(messageForError(error))
+            listener?.onError(context.getString(messageResForError(error)))
             listener?.onEnded()
         }
 
@@ -147,29 +149,41 @@ class SpeechRecognizerManager(private val context: Context) {
             ?.takeIf { it.isNotEmpty() }
 
     companion object {
-        /** Vietnamese by default; the platform downgrades gracefully if unsupported. */
-        const val DEFAULT_LANGUAGE = "vi-VN"
+        /**
+         * Language to recognize.
+         *
+         * Follows the device locale rather than being pinned to one language, so
+         * a phone set to Chinese or English transcribes in that language. The
+         * platform falls back to its own default if the exact locale has no
+         * recognizer.
+         */
+        val DEFAULT_LANGUAGE: String get() = Locale.getDefault().toLanguageTag()
 
         /** Whether the device has any recognition service at all. */
         fun isAvailable(context: Context): Boolean =
             SpeechRecognizer.isRecognitionAvailable(context)
 
-        /** Map a [SpeechRecognizer] error code to a friendly Vietnamese message. */
-        fun messageForError(error: Int): String = when (error) {
-            SpeechRecognizer.ERROR_AUDIO -> "Lỗi thu âm. Thử lại nhé."
-            SpeechRecognizer.ERROR_CLIENT -> "Trình nhận dạng bận, thử lại nhé."
-            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                "Chưa có quyền micro. Hãy bật quyền trong Cài đặt."
+        /**
+         * Map a [SpeechRecognizer] error code to a resource id.
+         *
+         * Returns an id rather than text so the caller decides the language;
+         * the platform error codes carry no wording of their own.
+         */
+        @androidx.annotation.StringRes
+        fun messageResForError(error: Int): Int = when (error) {
+            SpeechRecognizer.ERROR_AUDIO -> R.string.voice_err_audio
+            SpeechRecognizer.ERROR_CLIENT -> R.string.voice_err_client
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> R.string.voice_err_permission
             SpeechRecognizer.ERROR_NETWORK,
-            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Lỗi mạng khi nhận dạng giọng nói."
-            SpeechRecognizer.ERROR_NO_MATCH -> "Không nghe rõ, bạn thử nói lại nhé."
-            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Đang bận nhận dạng, thử lại sau giây lát."
-            SpeechRecognizer.ERROR_SERVER -> "Máy chủ nhận dạng gặp lỗi."
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Không nghe thấy gì. Thử lại nhé."
-            else -> "Không nhận dạng được giọng nói. Thử lại nhé."
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> R.string.voice_err_network_timeout
+            SpeechRecognizer.ERROR_NO_MATCH -> R.string.voice_err_no_match
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> R.string.voice_err_busy
+            SpeechRecognizer.ERROR_SERVER -> R.string.voice_err_server
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> R.string.voice_err_speech_timeout
+            else -> R.string.voice_err_unknown
         }
 
-        /** Convenience for the system locale used when vi-VN is unavailable. */
+        /** Convenience for the system locale used as a recognition fallback. */
         val FALLBACK_LOCALE: Locale get() = Locale.getDefault()
     }
 }

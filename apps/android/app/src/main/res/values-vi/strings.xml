@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tiếng Việt (values-vi).
+
+  Bản dịch của values/strings.xml. Giữ ĐÚNG bộ khoá như file gốc: thiếu khoá nào
+  thì chỗ đó tự rơi về tiếng Anh giữa màn hình, trông như lỗi chứ không như thiếu
+  bản dịch.
+
+  Văn phong: xưng "bạn" với người dùng, không dùng "tôi/em" cho trợ lý ở các câu
+  ngắn. Câu lỗi giữ ngắn và nói rõ cần làm gì tiếp.
+-->
+<resources>
+    <string name="app_name">Hermes Remote</string>
+
+    <!-- ==================== Trợ lý giọng nói ==================== -->
+    <string name="voice_notif_title">Trợ lý Hermes</string>
+    <string name="voice_notif_listening">Đang nghe \"Hey Hermes\"…</string>
+    <string name="voice_notif_unavailable">Chưa cấu hình wake word — bấm micro trong app để nói</string>
+    <string name="voice_notif_stop">Tắt</string>
+    <string name="voice_channel_name">Trợ lý giọng Hermes</string>
+    <string name="voice_channel_desc">Giữ micro luôn nghe từ khoá \"Hey Hermes\"</string>
+
+    <!-- ==================== Thẻ báo từ Trợ lý Google ==================== -->
+    <string name="assistant_banner">🎤 Từ Trợ lý Google</string>
+
+    <!-- ==================== Trạng thái giọng nói ==================== -->
+    <string name="voice_phase_listening">🎙 Đang nghe…</string>
+    <string name="voice_phase_thinking">⏳ Hermes đang xử lý…</string>
+    <string name="voice_phase_speaking">🔊 Đang đọc trả lời…</string>
+    <string name="voice_status_waiting">👂 Đang chờ \"Hey Hermes\"</string>
+    <string name="voice_stop">Dừng</string>
+
+    <!-- ==================== Màn hình chat ==================== -->
+    <string name="chat_clear">Xoá</string>
+    <string name="chat_you">Bạn</string>
+    <string name="chat_placeholder">Nhắn lệnh cho Hermes…</string>
+    <string name="chat_send">Gửi</string>
+    <string name="chat_empty_reply">Không có phản hồi từ server</string>
+    <string name="chat_error_spoken">Xin lỗi, có lỗi xảy ra. %1$s</string>
+    <string name="chat_error_no_answer">Xin lỗi, mình không có câu trả lời.</string>
+
+    <!-- ==================== Kết nối / thiết lập ==================== -->
+    <string name="setup_title">Cài đặt kết nối</string>
+    <string name="setup_scan_qr">📷 Quét QR từ máy tính</string>
+    <string name="setup_scan_qr_button">Quét QR</string>
+    <string name="setup_hint">Chạy `npx hermes-remote` trên máy tính,\nrồi quét mã QR trên trang mở ra để kết nối.</string>
+    <string name="setup_profile_label">Profile (để trống = dùng key .env; hoặc dalek / doraemon / heimeringer)</string>
+    <string name="setup_save">Lưu</string>
+    <string name="setup_saved_access_key">Đã lưu AccessKey</string>
+    <string name="setup_save_access_key">Lưu AccessKey</string>
+    <string name="setup_test">Kiểm tra</string>
+
+    <!-- ==================== Màn hình quét QR ==================== -->
+    <string name="qr_screen_title">Quét QR để kết nối</string>
+    <string name="qr_screen_prompt">Hướng camera vào mã QR trên trang Hermes Remote</string>
+    <string name="qr_screen_hint">Chạy `npx hermes-remote` trên máy tính, rồi quét mã QR trên trang web mở ra.</string>
+    <string name="qr_screen_open_camera">Mở camera</string>
+    <string name="qr_screen_back">Quay lại</string>
+    <string name="qr_screen_bad_code">Mã QR không phải của Hermes Remote</string>
+
+    <!-- ==================== Cài đặt giọng nói ==================== -->
+    <string name="settings_voice_title">Trợ lý giọng nói</string>
+    <string name="settings_voice_on">Đang bật — nói \"Hey Hermes\" để ra lệnh</string>
+    <string name="settings_voice_off">Đang tắt — bấm micro trong app để nói</string>
+    <string name="settings_wakeword_missing">Chưa cấu hình wake word — dùng nút micro</string>
+    <string name="settings_access_key_label">Picovoice AccessKey (cho \"Hey Hermes\", để trống = tắt)</string>
+
+    <!-- ==================== Trợ giúp Trợ lý Google ==================== -->
+    <string name="assistant_help_title">Dùng với Trợ lý Google</string>
+    <string name="assistant_help_summary">Nói câu lệnh vào app, Hermes trên PC trả lời</string>
+    <string name="assistant_help_show">Xem</string>
+    <string name="assistant_help_hide">Ẩn</string>
+    <string name="assistant_help_say_to_assistant">Nói với Trợ lý Google:</string>
+    <string name="assistant_help_examples">• \"Hey Google, ask Hermes &lt;câu hỏi&gt;\"\n• \"Ok Google, hỏi Hermes kiểm tra RAM\"\n\nChỉ mở app (không gửi lệnh):\n• \"Hey Google, open Hermes\"</string>
+    <string name="assistant_help_note">Lưu ý: Trợ lý Google / Claude-Fable chỉ *chuyển câu lệnh* vào app, não vẫn nằm trên Hermes PC. Cần bật \"Đọc trả lời\" để nghe Hermes đọc kết quả. Nếu chưa thấy app trong Trợ lý lần đầu, hãy mở app một lần rồi thử lại.</string>
+
+    <!-- ==================== Cập nhật ==================== -->
+    <string name="update_available">Có bản cập nhật %1$s</string>
+    <string name="update_downloading">Đang tải…</string>
+    <string name="update_later">Để sau</string>
+    <string name="update_now">Cập nhật</string>
+    <string name="update_failed">Tải bản cập nhật thất bại</string>
+    <string name="update_install_permission">Cần bật \"Cho phép cài đặt ứng dụng\" rồi thử lại</string>
+
+    <!-- ==================== Trạng thái kết nối ==================== -->
+    <string name="conn_missing_config">Thiếu URL hoặc API key</string>
+    <string name="conn_ok">Kết nối OK — %1$d model: %2$s</string>
+    <string name="conn_failed">Không kết nối được (kiểm tra URL, key, server đang chạy)</string>
+
+    <!-- ==================== Lỗi giọng nói ==================== -->
+    <string name="voice_err_not_heard">Không nghe rõ, bạn thử lại nhé.</string>
+    <string name="voice_err_audio">Lỗi thu âm. Thử lại nhé.</string>
+    <string name="voice_err_client">Trình nhận dạng bận, thử lại nhé.</string>
+    <string name="voice_err_permission">Chưa có quyền micro. Hãy bật quyền trong Cài đặt.</string>
+    <string name="voice_err_network_timeout">Lỗi mạng khi nhận dạng giọng nói.</string>
+    <string name="voice_err_no_match">Không nghe rõ, bạn thử nói lại nhé.</string>
+    <string name="voice_err_busy">Đang bận nhận dạng, thử lại sau giây lát.</string>
+    <string name="voice_err_server">Máy chủ nhận dạng gặp lỗi.</string>
+    <string name="voice_err_speech_timeout">Không nghe thấy gì. Thử lại nhé.</string>
+    <string name="voice_err_unknown">Không nhận dạng được giọng nói. Thử lại nhé.</string>
+    <string name="voice_err_no_recognizer">Thiết bị không có trình nhận dạng giọng nói</string>
+    <string name="voice_wakeword_not_set">Chưa cấu hình wake word — bấm micro để nói</string>
+
+    <!-- ==================== Lỗi mạng ==================== -->
+    <string name="net_no_config">Chưa cấu hình URL hoặc API key</string>
+    <string name="net_empty_body">Phản hồi rỗng từ server</string>
+    <string name="net_connect_failed">Lỗi kết nối: %1$s</string>
+    <string name="net_no_content">không có nội dung</string>
+
+    <!-- ==================== Câu lệnh nhanh ==================== -->
+    <string name="quick_status_title">Tình trạng máy</string>
+    <string name="quick_status_prompt">Kiểm tra nhanh tình trạng máy tính: CPU, RAM và dung lượng đĩa còn trống.</string>
+    <string name="quick_files_title">Danh sách file</string>
+    <string name="quick_files_prompt">Liệt kê các file trong thư mục hiện tại của bạn.</string>
+    <string name="quick_test_title">Chạy test</string>
+    <string name="quick_test_prompt">Chạy test suite của dự án hiện tại và tóm tắt kết quả.</string>
+    <string name="quick_git_title">Git status</string>
+    <string name="quick_git_prompt">Cho tôi biết trạng thái git hiện tại của dự án đang làm việc.</string>
+    <string name="quick_shutdown_title">Tắt máy</string>
+    <string name="quick_shutdown_prompt">Hỏi tôi xác nhận rồi tắt máy tính sau 60 giây.</string>
+    <string name="tts_link_word">liên kết</string>
+</resources>

@@ -1,5 +1,7 @@
 package io.hermes.remote.data
 
+import io.hermes.remote.R
+
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import io.hermes.remote.model.ChatMessage
@@ -34,7 +36,41 @@ class ChatApi(
 ) {
 
     /**
+     * UI strings this class needs.
+     *
+     * Injected rather than read from resources so the class stays free of an
+     * Android Context and its behaviour stays unit-testable on the JVM.
+     */
+    data class Messages(
+        val noConfig: String,
+        val emptyBody: String,
+        val connectFailed: (String) -> String,
+        val noContent: String,
+    ) {
+        companion object {
+            /** English defaults, used by tests that do not care about wording. */
+            val DEFAULT = Messages(
+                noConfig = "URL or API key not configured",
+                emptyBody = "Empty response from the server",
+                connectFailed = { "Connection error: $it" },
+                noContent = "no content",
+            )
+
+            /** Build from Android resources at the call site. */
+            fun from(context: android.content.Context) = Messages(
+                noConfig = context.getString(R.string.net_no_config),
+                emptyBody = context.getString(R.string.net_empty_body),
+                connectFailed = { context.getString(R.string.net_connect_failed, it) },
+                noContent = context.getString(R.string.net_no_content),
+            )
+        }
+    }
+
+    /**
      * Send the conversation and stream back the reply.
+     *
+     * [messages] is declared before [onEvent] so callers keep using a trailing
+     * lambda, which reads better than an explicitly named callback argument.
      *
      * @param onEvent invoked for each [StreamEvent] as it arrives.
      * @return the accumulated assistant text (also sent as [StreamEvent.Completed]).
@@ -42,10 +78,11 @@ class ChatApi(
     fun streamChat(
         config: ServerConfig,
         history: List<ChatMessage>,
+        messages: Messages = Messages.DEFAULT,
         onEvent: (StreamEvent) -> Unit,
     ): String {
         if (!config.isValid()) {
-            onEvent(StreamEvent.Failed("Chưa cấu hình URL hoặc API key"))
+            onEvent(StreamEvent.Failed(messages.noConfig))
             return ""
         }
 
@@ -63,13 +100,13 @@ class ChatApi(
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val err = response.body?.string().orEmpty()
-                    val msg = describeHttpError(response, err)
+                    val msg = describeHttpError(response, err, messages)
                     onEvent(StreamEvent.Failed(msg))
                     return full.toString()
                 }
                 val source = response.body?.source()
                     ?: run {
-                        onEvent(StreamEvent.Failed("Phản hồi rỗng từ server"))
+                        onEvent(StreamEvent.Failed(messages.emptyBody))
                         return full.toString()
                     }
                 while (!source.exhausted()) {
@@ -87,7 +124,7 @@ class ChatApi(
                 }
             }
         } catch (e: IOException) {
-            onEvent(StreamEvent.Failed("Lỗi kết nối: ${e.message ?: e.javaClass.simpleName}"))
+            onEvent(StreamEvent.Failed(messages.connectFailed(e.message ?: e.javaClass.simpleName)))
             return full.toString()
         }
 
@@ -132,9 +169,9 @@ class ChatApi(
         return root.toString()
     }
 
-    private fun describeHttpError(response: Response, body: String): String {
+    private fun describeHttpError(response: Response, body: String, messages: Messages): String {
         val detail = SseParser.readStringField(body, "message")
-            ?: body.take(200).ifBlank { "không có nội dung" }
+            ?: body.take(200).ifBlank { messages.noContent }
         return "HTTP ${response.code}: $detail"
     }
 

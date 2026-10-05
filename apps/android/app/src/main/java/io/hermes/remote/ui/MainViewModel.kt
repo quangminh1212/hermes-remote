@@ -113,6 +113,68 @@ object NoopVoiceController : VoiceController {
     override fun setAssistantEnabled(enabled: Boolean) = false
 }
 
+/**
+ * Localised text the ViewModel needs.
+ *
+ * Injected rather than read from a Context so the ViewModel stays free of
+ * Android framework classes and unit-testable on the JVM — the same reason
+ * [VoiceController] exists. The Activity supplies the resource-backed
+ * implementation; tests use [Default].
+ */
+interface StringProvider {
+    /** "Machine status" and its prompt, "List files" and its prompt, … */
+    fun quickActions(): List<Pair<String, String>>
+
+    fun missingConfig(): String
+    fun connectionOk(modelCount: Int, sample: String): String
+    fun connectionFailed(): String
+
+    fun updateFailed(): String
+    fun emptyReply(): String
+    fun noReplyFromServer(): String
+    fun errorSpoken(detail: String): String
+    fun noAnswer(): String
+
+    fun noRecognizer(): String
+    fun wakeWordNotSet(): String
+
+    /** ChatApi's own messages, in the current language. */
+    fun chatApiMessages(): ChatApi.Messages
+}
+
+/**
+ * English defaults, for tests and previews that do not assert on wording.
+ *
+ * Kept in sync with values/strings.xml; a test asserts the quick-action count
+ * so a missing entry here cannot silently shrink the UI.
+ */
+object DefaultStringProvider : StringProvider {
+    override fun quickActions() = listOf(
+        "Machine status" to "Quickly check my computer's status: CPU, RAM and free disk space.",
+        "List files" to "List the files in my current folder.",
+        "Run tests" to "Run the current project's test suite and summarize the result.",
+        "Git status" to "Tell me the current git status of the project I'm working on.",
+        "Shut down" to "Ask me to confirm, then shut down the computer in 60 seconds.",
+    )
+
+    override fun missingConfig() = "Missing URL or API key"
+    override fun connectionOk(modelCount: Int, sample: String) =
+        "Connected — $modelCount models: $sample"
+    override fun connectionFailed() =
+        "Could not connect (check the URL, key, and that the server is running)"
+
+    override fun updateFailed() = "Could not download the update"
+    override fun emptyReply() = "No reply."
+    override fun noReplyFromServer() = "No reply from the server"
+    override fun errorSpoken(detail: String) = "Sorry, something went wrong. $detail"
+    override fun noAnswer() = "Sorry, I don't have an answer."
+
+    override fun noRecognizer() = "This device has no speech recognizer"
+    override fun wakeWordNotSet() = "Wake word not configured — tap the mic to talk"
+
+    override fun chatApiMessages() = ChatApi.Messages.DEFAULT
+}
+
 /** Drives the chat: holds transcript, config, and streams replies. */
 class MainViewModel(
     private val configStore: ConfigStore,
@@ -120,6 +182,7 @@ class MainViewModel(
     private val updateChecker: UpdateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
     private val updatePrefs: android.content.SharedPreferences? = null,
     private val voice: VoiceController = NoopVoiceController,
+    private val strings: StringProvider = DefaultStringProvider,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -207,7 +270,7 @@ class MainViewModel(
                     _state.value = _state.value.copy(
                         update = _state.value.update.copy(
                             downloading = false, progress = null,
-                            error = e.message ?: "Tải bản cập nhật thất bại",
+                            error = e.message ?: strings.updateFailed(),
                         ),
                     )
                 },
@@ -222,14 +285,7 @@ class MainViewModel(
 
 
     /** Quick-action prompts shown as chips: label to prompt. */
-    val quickActions: List<Pair<String, String>> = listOf(
-        "Tình trạng máy" to
-            "Kiểm tra nhanh tình trạng máy tính: CPU, RAM và dung lượng đĩa còn trống.",
-        "Danh sách file" to "Liệt kê các file trong thư mục hiện tại của bạn.",
-        "Chạy test" to "Chạy test suite của dự án hiện tại và tóm tắt kết quả.",
-        "Git status" to "Cho tôi biết trạng thái git hiện tại của dự án đang làm việc.",
-        "Tắt máy" to "Hỏi tôi xác nhận rồi tắt máy tính sau 60 giây.",
-    )
+    val quickActions: List<Pair<String, String>> get() = strings.quickActions()
 
     fun onInputChange(value: String) {
         _state.value = _state.value.copy(input = value)
@@ -256,14 +312,14 @@ class MainViewModel(
     fun testConnection(config: ServerConfig) {
         viewModelScope.launch {
             if (!config.isValid()) {
-                _state.value = _state.value.copy(connectionHint = "Thiếu URL hoặc API key")
+                _state.value = _state.value.copy(connectionHint = strings.missingConfig())
                 return@launch
             }
             val models = withContext(Dispatchers.IO) { api.listModels(config) }
             val hint = when {
                 models.isNotEmpty() ->
-                    "Kết nối OK — ${models.size} model: ${models.take(3).joinToString()}"
-                else -> "Không kết nối được (kiểm tra URL, key, server đang chạy)"
+                    strings.connectionOk(models.size, models.take(3).joinToString())
+                else -> strings.connectionFailed()
             }
             _state.value = _state.value.copy(connectionHint = hint)
         }
@@ -299,7 +355,11 @@ class MainViewModel(
 
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                api.streamChat(current.config, history) { event ->
+                api.streamChat(
+                    current.config,
+                    history,
+                    strings.chatApiMessages(),
+                ) { event ->
                     when (event) {
                         is StreamEvent.Delta -> appendDelta(placeholder.id, event.text)
                         is StreamEvent.Completed -> Unit
@@ -342,7 +402,7 @@ class MainViewModel(
                 }
             },
         )
-        if (wasSpoken) speakAndReturnToIdle("Xin lỗi, có lỗi xảy ra. $message")
+        if (wasSpoken) speakAndReturnToIdle(strings.errorSpoken(message))
     }
 
     private fun finishStream(id: String, result: String) {
@@ -365,8 +425,8 @@ class MainViewModel(
                 if (msg.id == id) {
                     msg.copy(
                         state = if (blank) DeliveryState.ERROR else DeliveryState.DONE,
-                        content = result.ifBlank { "Không có phản hồi." },
-                        error = if (blank) "Không có phản hồi từ server" else null,
+                        content = result.ifBlank { strings.emptyReply() },
+                        error = if (blank) strings.noReplyFromServer() else null,
                     )
                 } else {
                     msg
@@ -375,7 +435,7 @@ class MainViewModel(
         )
 
         if (wasSpoken) {
-            speakAndReturnToIdle(if (blank) "Xin lỗi, mình không có câu trả lời." else result)
+            speakAndReturnToIdle(if (blank) strings.noAnswer() else result)
         }
     }
 
@@ -426,7 +486,7 @@ class MainViewModel(
         if (current.isStreaming) return
         if (!current.voice.micAvailable) {
             _state.value = current.copy(
-                voice = current.voice.copy(statusMessage = "Thiết bị không có trình nhận dạng giọng nói"),
+                voice = current.voice.copy(statusMessage = strings.noRecognizer()),
             )
             return
         }
@@ -511,7 +571,7 @@ class MainViewModel(
         _state.value = _state.value.copy(
             voice = _state.value.voice.copy(
                 wakeWordActive = false,
-                statusMessage = "Chưa cấu hình wake word — bấm micro để nói",
+                statusMessage = strings.wakeWordNotSet(),
             ),
         )
     }
@@ -529,6 +589,7 @@ class MainViewModel(
             store: ConfigStore,
             updatePrefs: android.content.SharedPreferences? = null,
             voice: VoiceController = NoopVoiceController,
+            strings: StringProvider = DefaultStringProvider,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -538,6 +599,7 @@ class MainViewModel(
                         updateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
                         updatePrefs = updatePrefs,
                         voice = voice,
+                        strings = strings,
                     ) as T
             }
     }

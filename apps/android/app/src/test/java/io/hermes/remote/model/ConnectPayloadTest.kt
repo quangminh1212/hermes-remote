@@ -34,6 +34,27 @@ class ConnectPayloadTest {
     }
 
     @Test
+    fun `parses the agent list and default agent from the bridge payload`() {
+        val json =
+            """{"v":1,"baseUrl":"http://10.0.0.5:8643","fallbackUrl":"http://10.0.0.5:8643","apiKey":"k","profile":"","model":"claude","profiles":[],"agents":["claude","codex","Anthropic"],"defaultAgent":"codex"}"""
+        val p = ConnectPayload.parse(json)!!
+        assertEquals(listOf("claude", "codex", "Anthropic"), p.agents)
+        assertEquals("codex", p.defaultAgent)
+        // The bridge URL is what the phone should connect to.
+        assertEquals("http://10.0.0.5:8643", p.baseUrl)
+        assertTrue(p.isUsable())
+    }
+
+    @Test
+    fun `tolerates a payload without the agent fields`() {
+        // Older npm pack versions omitted agents/defaultAgent; the app must
+        // still configure itself and simply offer no agent picker.
+        val p = ConnectPayload.parse(validJson)!!
+        assertEquals(emptyList<String>(), p.agents)
+        assertEquals("", p.defaultAgent)
+    }
+
+    @Test
     fun `rejects an unrelated QR code`() {
         assertNull(ConnectPayload.parse("https://example.com/some/link"))
         assertNull(ConnectPayload.parse("just some text"))

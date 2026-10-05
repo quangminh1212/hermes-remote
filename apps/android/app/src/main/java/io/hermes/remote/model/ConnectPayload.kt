@@ -16,7 +16,9 @@ import com.google.gson.annotations.SerializedName
  *   "apiKey": "…",
  *   "profile": "",
  *   "model": "Claude-Fable.3",
- *   "profiles": ["dalek","doraemon"]
+ *   "profiles": ["dalek","doraemon"],
+ *   "agents": ["claude","codex","grok"],
+ *   "defaultAgent": "claude"
  * }
  */
 data class ConnectPayload(
@@ -26,7 +28,15 @@ data class ConnectPayload(
     @SerializedName("apiKey") val apiKey: String = "",
     @SerializedName("profile") val profile: String = "",
     @SerializedName("model") val model: String = "",
-    @SerializedName("profiles") val profiles: List<String> = emptyList()
+    @SerializedName("profiles") val profiles: List<String> = emptyList(),
+    /**
+     * Agent ids the PC's agent bridge can answer with (claude, codex, …); empty
+     * when the bridge is off. Sending one of these as the model selects which
+     * CLI replies.
+     */
+    @SerializedName("agents") val agents: List<String> = emptyList(),
+    /** The agent the PC picks when a request names none. */
+    @SerializedName("defaultAgent") val defaultAgent: String = ""
 ) {
     /** True when this payload has the minimum needed to connect. */
     fun isUsable(): Boolean = baseUrl.isNotBlank() && apiKey.isNotBlank()

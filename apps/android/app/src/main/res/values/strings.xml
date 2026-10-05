@@ -1,11 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default strings — English.
+
+  English is the fallback: a device set to a language without its own
+  values-<lang>/ folder falls back here rather than showing a language the user
+  may not read. Translations live in values-vi/ and values-zh/.
+
+  Keep every file's key set identical. A missing key silently falls back to
+  English mid-screen, which looks like a bug rather than a translation gap.
+-->
 <resources>
     <string name="app_name">Hermes Remote</string>
 
-    <!-- Voice assistant -->
-    <string name="voice_notif_title">Hermes đang trợ lý</string>
-    <string name="voice_notif_listening">Đang nghe "Hey Hermes"…</string>
-    <string name="voice_notif_unavailable">Chưa cấu hình wake word — bấm micro trong app để nói</string>
-    <string name="voice_notif_stop">Tắt</string>
-    <string name="voice_channel_name">Trợ lý giọng Hermes</string>
-    <string name="voice_channel_desc">Giữ micro luôn nghe từ khoá "Hey Hermes"</string>
+    <!-- ==================== Voice assistant ==================== -->
+    <string name="voice_notif_title">Hermes assistant</string>
+    <string name="voice_notif_listening">Listening for \"Hey Hermes\"…</string>
+    <string name="voice_notif_unavailable">Wake word not configured — tap the mic in the app to talk</string>
+    <string name="voice_notif_stop">Stop</string>
+    <string name="voice_channel_name">Hermes voice assistant</string>
+    <string name="voice_channel_desc">Keeps the microphone open for the \"Hey Hermes\" wake word</string>
+
+    <!-- ==================== Assistant hand-off banner ==================== -->
+    <string name="assistant_banner">🎤 From Google Assistant</string>
+
+    <!-- ==================== Voice status / phases ==================== -->
+    <string name="voice_phase_listening">🎙 Listening…</string>
+    <string name="voice_phase_thinking">⏳ Hermes is working…</string>
+    <string name="voice_phase_speaking">🔊 Reading the reply…</string>
+    <string name="voice_status_waiting">👂 Waiting for \"Hey Hermes\"</string>
+    <string name="voice_stop">Stop</string>
+
+    <!-- ==================== Chat screen ==================== -->
+    <string name="chat_clear">Clear</string>
+    <string name="chat_you">You</string>
+    <string name="chat_placeholder">Message Hermes…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_empty_reply">No reply from the server</string>
+    <string name="chat_error_spoken">Sorry, something went wrong. %1$s</string>
+    <string name="chat_error_no_answer">Sorry, I don\'t have an answer.</string>
+
+    <!-- ==================== Pairing / setup ==================== -->
+    <string name="setup_title">Connection settings</string>
+    <string name="setup_scan_qr">📷 Scan QR from the PC</string>
+    <string name="setup_scan_qr_button">Scan QR</string>
+    <string name="setup_hint">Run `npx hermes-remote` on your computer,\nthen scan the QR code on the page it opens.</string>
+    <string name="setup_profile_label">Profile (empty = use the .env key; or dalek / doraemon / heimeringer)</string>
+    <string name="setup_save">Save</string>
+    <string name="setup_saved_access_key">AccessKey saved</string>
+    <string name="setup_save_access_key">Save AccessKey</string>
+    <string name="setup_test">Test</string>
+
+    <!-- ==================== QR scanner screen ==================== -->
+    <string name="qr_screen_title">Scan QR to connect</string>
+    <string name="qr_screen_prompt">Point the camera at the QR code on the Hermes Remote page</string>
+    <string name="qr_screen_hint">Run `npx hermes-remote` on your computer, then scan the QR code on the web page it opens.</string>
+    <string name="qr_screen_open_camera">Open camera</string>
+    <string name="qr_screen_back">Back</string>
+    <string name="qr_screen_bad_code">That QR code is not from Hermes Remote</string>
+
+    <!-- ==================== Voice settings ==================== -->
+    <string name="settings_voice_title">Voice assistant</string>
+    <string name="settings_voice_on">On — say \"Hey Hermes\" to give a command</string>
+    <string name="settings_voice_off">Off — tap the mic in the app to talk</string>
+    <string name="settings_wakeword_missing">Wake word not configured — use the mic button</string>
+    <string name="settings_access_key_label">Picovoice AccessKey (for \"Hey Hermes\", empty = off)</string>
+
+    <!-- ==================== Google Assistant help ==================== -->
+    <string name="assistant_help_title">Use with Google Assistant</string>
+    <string name="assistant_help_summary">Speak a command to the app, Hermes on your PC answers</string>
+    <string name="assistant_help_show">Show</string>
+    <string name="assistant_help_hide">Hide</string>
+    <string name="assistant_help_say_to_assistant">Say to Google Assistant:</string>
+    <string name="assistant_help_examples">• \"Hey Google, ask Hermes &lt;question&gt;\"\n• \"Ok Google, ask Hermes to check RAM\"\n\nOpen the app only (sends nothing):\n• \"Hey Google, open Hermes\"</string>
+    <string name="assistant_help_note">Note: Google Assistant / Claude-Fable only *forwards the command* into the app; the brain stays on your Hermes PC. Turn on \"Read replies\" to hear Hermes speak the result. If the app is missing from the Assistant the first time, open it once and try again.</string>
+
+    <!-- ==================== Updates ==================== -->
+    <string name="update_available">Update %1$s available</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_later">Later</string>
+    <string name="update_now">Update</string>
+    <string name="update_failed">Could not download the update</string>
+    <string name="update_install_permission">Turn on \"Allow installing apps\", then try again</string>
+
+    <!-- ==================== Connection state ==================== -->
+    <string name="conn_missing_config">Missing URL or API key</string>
+    <string name="conn_ok">Connected — %1$d models: %2$s</string>
+    <string name="conn_failed">Could not connect (check the URL, key, and that the server is running)</string>
+
+    <!-- ==================== Voice errors ==================== -->
+    <string name="voice_err_not_heard">I didn\'t catch that, please try again.</string>
+    <string name="voice_err_audio">Recording error. Please try again.</string>
+    <string name="voice_err_client">The recognizer is busy, please try again.</string>
+    <string name="voice_err_permission">No microphone permission. Please enable it in Settings.</string>
+    <string name="voice_err_network_timeout">Network error while recognizing speech.</string>
+    <string name="voice_err_no_match">I didn\'t catch that, please say it again.</string>
+    <string name="voice_err_busy">Recognition is busy, try again in a moment.</string>
+    <string name="voice_err_server">The recognition server returned an error.</string>
+    <string name="voice_err_speech_timeout">I didn\'t hear anything. Please try again.</string>
+    <string name="voice_err_unknown">Could not recognize speech. Please try again.</string>
+    <string name="voice_err_no_recognizer">This device has no speech recognizer</string>
+    <string name="voice_wakeword_not_set">Wake word not configured — tap the mic to talk</string>
+
+    <!-- ==================== Network errors ==================== -->
+    <string name="net_no_config">URL or API key not configured</string>
+    <string name="net_empty_body">Empty response from the server</string>
+    <string name="net_connect_failed">Connection error: %1$s</string>
+    <string name="net_no_content">no content</string>
+
+    <!-- ==================== Quick prompts ==================== -->
+    <string name="quick_status_title">Machine status</string>
+    <string name="quick_status_prompt">Quickly check my computer\'s status: CPU, RAM and free disk space.</string>
+    <string name="quick_files_title">List files</string>
+    <string name="quick_files_prompt">List the files in my current folder.</string>
+    <string name="quick_test_title">Run tests</string>
+    <string name="quick_test_prompt">Run the current project\'s test suite and summarize the result.</string>
+    <string name="quick_git_title">Git status</string>
+    <string name="quick_git_prompt">Tell me the current git status of the project I\'m working on.</string>
+    <string name="quick_shutdown_title">Shut down</string>
+    <string name="quick_shutdown_prompt">Ask me to confirm, then shut down the computer in 60 seconds.</string>
+    <string name="tts_link_word">link</string>
 </resources>
