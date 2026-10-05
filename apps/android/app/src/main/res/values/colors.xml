@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  XLab palette.
+
+  Values mirror the XLab design system (tailwind.config.js in the XLab web
+  project) so the Android app, the pairing web page and the web app share one
+  visual identity instead of drifting apart.
+
+  Brand teal #00A19A is the anchor; the slate ramp is the dark surface system.
+-->
+<resources>
+    <!-- Brand -->
+    <color name="xlab_primary">#FF00A19A</color>
+    <color name="xlab_primary_dark">#FF0D9488</color>
+    <color name="xlab_primary_light">#FF33D6D6</color>
+    <color name="xlab_secondary">#FF37C88F</color>
+
+    <!-- Dark surfaces (slate) -->
+    <color name="xlab_bg_primary">#FF1E293B</color>
+    <color name="xlab_bg_secondary">#FF334155</color>
+    <color name="xlab_bg_tertiary">#FF475569</color>
+    <color name="xlab_bg_elevated">#FF64748B</color>
+
+    <!-- Text -->
+    <color name="xlab_text_primary">#FFF7F9FB</color>
+    <color name="xlab_text_secondary">#FFC9D1D9</color>
+    <color name="xlab_text_tertiary">#FF8B949E</color>
+
+    <!-- Borders -->
+    <color name="xlab_border_subtle">#FF475569</color>
+    <color name="xlab_border">#FF64748B</color>
+
+    <!-- Status -->
+    <color name="xlab_success">#FF3FB950</color>
+    <color name="xlab_warning">#FFD29922</color>
+    <color name="xlab_error">#FFF85149</color>
+
+    <!-- Launcher background must match the adaptive icon's background layer -->
+    <color name="ic_launcher_background">#FF00A19A</color>
+</resources>

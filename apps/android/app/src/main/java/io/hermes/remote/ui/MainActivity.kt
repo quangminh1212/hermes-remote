@@ -1,0 +1,805 @@
+package io.hermes.remote.ui
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import io.hermes.remote.data.ConfigStore
+import io.hermes.remote.model.ChatMessage
+import io.hermes.remote.model.ConnectPayload
+import io.hermes.remote.model.DeliveryState
+import io.hermes.remote.model.ServerConfig
+import io.hermes.remote.updater.ApkDownloader
+import io.hermes.remote.updater.UpdateInstaller
+import io.hermes.remote.ui.theme.XLabTheme
+import io.hermes.remote.voice.AndroidVoiceController
+import io.hermes.remote.voice.VoiceBus
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+
+    /** Concrete voice plumbing: system STT + TTS + the wake-word service. */
+    private lateinit var voiceController: AndroidVoiceController
+
+    /** Query handed in by a Google Assistant "App Action" (Phase B). */
+    private var pendingAssistantQuery: String? = null
+
+    /** Last query the Assistant handed us; drives the "from Assistant" banner. */
+    private var lastAssistantQuery: String? = null
+
+    private val viewModel: MainViewModel by viewModels {
+        MainViewModel.factory(
+            ConfigStore(applicationContext),
+            getSharedPreferences("hermes_bridge_update", Context.MODE_PRIVATE),
+            voiceController,
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        voiceController = AndroidVoiceController(applicationContext)
+        voiceController.warmUp()
+
+        // A Google Assistant "ask Hermes …" action arrives as an intent extra.
+        // `savedInstanceState != null` means this is a config-change/process
+        // restore, not a fresh Assistant hand-off — honouring the intent again
+        // would resend the prompt (and the reply would be spoken twice).
+        pendingAssistantQuery =
+            if (savedInstanceState == null) extractAssistantQuery(intent) else null
+
+        // Kick off an update check when the app opens (rate-limited to 6h by
+        // the view model, so repeated launches are cheap).
+        viewModel.checkForUpdate()
+        requestVoicePermissionsIfNeeded()
+
+        setContent {
+            XLabTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    val state by viewModel.state.collectAsState()
+                    ChatScreen(viewModel, state)
+                }
+            }
+        }
+
+        // React to wake-word events coming from the foreground service.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                VoiceBus.events.collect { event ->
+                    when (event) {
+                        VoiceBus.Event.WAKE -> viewModel.onWakeWord()
+                        VoiceBus.Event.WAKE_UNAVAILABLE -> viewModel.onWakeWordUnavailable()
+                    }
+                }
+            }
+        }
+
+        // Run a pending Assistant query once the UI exists.
+        pendingAssistantQuery?.let { query ->
+            pendingAssistantQuery = null
+            lastAssistantQuery = query
+            viewModel.sendFromAssistant(query)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // The Assistant hands off the query while the app may already be open
+        // (launchMode=singleTask). Route it through the same path as a cold
+        // start so the reply is spoken when speak-replies is on.
+        extractAssistantQuery(intent)?.let { query ->
+            lastAssistantQuery = query
+            viewModel.sendFromAssistant(query)
+        }
+    }
+
+    override fun onDestroy() {
+        voiceController.release()
+        super.onDestroy()
+    }
+
+    /** Ask for mic + notification permission the first time voice is used. */
+    private fun requestVoicePermissionsIfNeeded() {
+        val needed = mutableListOf<String>()
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += android.Manifest.permission.RECORD_AUDIO
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += android.Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (needed.isNotEmpty()) {
+            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+                .launch(needed.toTypedArray())
+        }
+    }
+
+    companion object {
+        /** Action used by the App Actions capability (see res/xml/shortcuts.xml). */
+        const val ACTION_ASK = "io.hermes.remote.action.ASK"
+
+        /** Extra carrying the Assistant query text. */
+        const val EXTRA_QUERY = "query"
+
+        /**
+         * Pull a query out of an Assistant / App-Action intent, if present.
+         *
+         * The parsing rules live in [io.hermes.remote.voice.AssistantIntent] so
+         * they are unit-testable on the JVM; they must stay in sync with the
+         * capability declarations in `res/xml/shortcuts.xml`.
+         */
+        fun extractAssistantQuery(intent: Intent?): String? =
+            io.hermes.remote.voice.AssistantIntent.fromIntent(intent)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
+    var showSettings by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    // Launch the QR scanner and feed a valid payload straight into the VM.
+    var scanError by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val text = result.data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT)
+            val payload = ConnectPayload.parse(text)
+            if (payload != null) {
+                scanError = null
+                viewModel.applyConnectPayload(payload)
+            } else {
+                scanError = "Mã QR không phải của Hermes Remote"
+            }
+        }
+    }
+    val startScan: () -> Unit = {
+        scanLauncher.launch(Intent(context, QrScanActivity::class.java))
+    }
+
+    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.content) {
+        if (state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.lastIndex)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Hermes Remote") },
+                actions = {
+                    IconButton(onClick = { showSettings = true }) {
+                        Text("⚙", style = MaterialTheme.typography.titleLarge)
+                    }
+                    TextButton(onClick = viewModel::clearChat) { Text("Xoá") }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding(),
+        ) {
+            ConnectionBanner(state.config, state.connectionHint)
+
+            if (state.update.available != null) {
+                UpdateBanner(
+                    update = state.update,
+                    onDismiss = viewModel::dismissUpdate,
+                    onUpdate = {
+                        viewModel.downloadUpdate(
+                            downloader = ApkDownloader(context),
+                            canInstall = { UpdateInstaller.canInstall(context) },
+                            onReady = { file ->
+                                if (!UpdateInstaller.install(context, file)) {
+                                    UpdateInstaller.openInstallPermissionSettings(context)
+                                }
+                            },
+                            onNeedsPermission = {
+                                Toast.makeText(
+                                    context,
+                                    "Cần bật \"Cho phép cài đặt ứng dụng\" rồi thử lại",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                UpdateInstaller.openInstallPermissionSettings(context)
+                            },
+                        )
+                    },
+                )
+            }
+
+            VoiceStatusBar(
+                voice = state.voice,
+                onStopListening = viewModel::stopVoiceInput,
+                onStopSpeaking = viewModel::stopSpeaking,
+            )
+
+            AssistantBanner(
+                prompt = state.assistantPrompt,
+                onDismiss = viewModel::clearAssistantPrompt,
+            )
+
+            Box(modifier = Modifier.weight(1f)) {
+                if (state.messages.isEmpty()) {
+                    EmptyState(onScanQr = startScan, scanError = scanError ?: state.connectionHint)
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(state.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                    }
+                }
+            }
+
+            QuickActions(
+                actions = viewModel.quickActions,
+                enabled = !state.isStreaming,
+                onPick = { viewModel.send(it) },
+            )
+
+            InputBar(
+                value = state.input,
+                enabled = !state.isStreaming,
+                voice = state.voice,
+                onValueChange = viewModel::onInputChange,
+                onSend = { viewModel.send() },
+                onMic = viewModel::startVoiceInput,
+                onMicStop = viewModel::stopVoiceInput,
+            )
+        }
+    }
+
+    if (showSettings) {
+        SettingsSheet(
+            initial = state.config,
+            hint = state.connectionHint,
+            voice = state.voice,
+            onDismiss = { showSettings = false },
+            onSave = {
+                viewModel.saveConfig(it)
+                showSettings = false
+            },
+            onTest = viewModel::testConnection,
+            onScanQr = {
+                showSettings = false
+                startScan()
+            },
+            onToggleVoice = viewModel::setVoiceAssistantEnabled,
+        )
+    }
+}
+
+/**
+ * Banner shown when a prompt arrived from Google Assistant, so the user can see
+ * the "Hey Google → Hermes" hop actually landed (and dismiss the record of it).
+ */
+@Composable
+private fun AssistantBanner(prompt: String?, onDismiss: () -> Unit) {
+    val text = prompt ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("🎤 Từ Trợ lý Google", style = MaterialTheme.typography.labelLarge)
+                Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+            }
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
+    }
+}
+
+/** Compact strip showing what the voice assistant is doing right now. */
+@Composable
+private fun VoiceStatusBar(
+    voice: VoiceUiState,
+    onStopListening: () -> Unit,
+    onStopSpeaking: () -> Unit,
+) {
+    // Hide the strip entirely when the assistant is idle and quiet.
+    val visible = voice.phase != VoicePhase.IDLE ||
+        !voice.statusMessage.isNullOrBlank() ||
+        voice.enabled
+    if (!visible) return
+
+    val (label, container) = when (voice.phase) {
+        VoicePhase.LISTENING -> "🎙 Đang nghe…" to MaterialTheme.colorScheme.tertiaryContainer
+        VoicePhase.THINKING -> "⏳ Hermes đang xử lý…" to MaterialTheme.colorScheme.secondaryContainer
+        VoicePhase.SPEAKING -> "🔊 Đang đọc trả lời…" to MaterialTheme.colorScheme.primaryContainer
+        VoicePhase.IDLE -> {
+            val msg = voice.statusMessage
+            when {
+                !msg.isNullOrBlank() -> msg to MaterialTheme.colorScheme.surfaceVariant
+                voice.enabled -> "👂 Đang chờ \"Hey Hermes\"" to MaterialTheme.colorScheme.surfaceVariant
+                else -> "" to MaterialTheme.colorScheme.surfaceVariant
+            }
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                if (voice.phase == VoicePhase.LISTENING && voice.partial.isNotBlank()) {
+                    Text(voice.partial, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            when (voice.phase) {
+                VoicePhase.LISTENING ->
+                    TextButton(onClick = onStopListening) { Text("Dừng") }
+                VoicePhase.SPEAKING ->
+                    TextButton(onClick = onStopSpeaking) { Text("Im") }
+                else -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateBanner(
+    update: UpdateUiState,
+    onDismiss: () -> Unit,
+    onUpdate: () -> Unit,
+) {
+    val info = update.available ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Có bản cập nhật ${info.versionName}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (update.downloading) {
+                Spacer(Modifier.height(6.dp))
+                val label = update.progress?.let { "$it%" } ?: "Đang tải…"
+                LinearProgressIndicator(
+                    progress = (update.progress ?: 0) / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+            update.error?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss, enabled = !update.downloading) {
+                    Text("Để sau")
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = onUpdate, enabled = !update.downloading) {
+                    Text(if (update.downloading) "Đang tải…" else "Cập nhật")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionBanner(config: ServerConfig, hint: String?) {
+    val profile = config.profile.ifBlank { "?" }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Text(
+                "Profile: $profile · Model: ${config.model}",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            if (hint != null) {
+                Text(hint, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(onScanQr: () -> Unit, scanError: String?) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("📷", style = MaterialTheme.typography.displayLarge)
+            Text(
+                "Chạy `npx hermes-remote` trên máy tính,\nrồi quét mã QR trên trang mở ra để kết nối.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(16.dp),
+            )
+            androidx.compose.material3.Button(onClick = onScanQr) { Text("Quét QR") }
+            if (scanError != null) {
+                Text(
+                    scanError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF1565C0),
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBubble(msg: ChatMessage) {
+    val isUser = msg.isUser
+    val bubbleColor = when {
+        msg.state == DeliveryState.ERROR -> MaterialTheme.colorScheme.errorContainer
+        isUser -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+    ) {
+        Card(
+            modifier = Modifier.widthIn(max = 320.dp),
+            colors = CardDefaults.cardColors(containerColor = bubbleColor),
+        ) {
+            Column(Modifier.padding(10.dp)) {
+                Text(
+                    text = if (isUser) "Bạn" else "Hermes",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(msg.content.ifBlank { "…" })
+                    if (msg.state == DeliveryState.STREAMING) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .widthIn(max = 14.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickActions(
+    actions: List<Pair<String, String>>,
+    enabled: Boolean,
+    onPick: (String) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        actions.forEach { (label, prompt) ->
+            AssistChip(
+                onClick = { onPick(prompt) },
+                enabled = enabled,
+                label = { Text(label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun InputBar(
+    value: String,
+    enabled: Boolean,
+    voice: VoiceUiState,
+    onValueChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onMic: () -> Unit,
+    onMicStop: () -> Unit,
+) {
+    val listening = voice.phase == VoicePhase.LISTENING
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Nhắn lệnh cho Hermes…") },
+            maxLines = 4,
+            enabled = enabled,
+        )
+        // Mic: tap to talk, tap again to stop. Disabled if the device has no STT.
+        androidx.compose.material3.FilledTonalIconButton(
+            onClick = { if (listening) onMicStop() else onMic() },
+            enabled = (enabled || listening) && voice.micAvailable,
+        ) {
+            Text(if (listening) "⏹" else "🎙", style = MaterialTheme.typography.titleMedium)
+        }
+        androidx.compose.material3.Button(
+            onClick = onSend,
+            enabled = enabled && value.isNotBlank(),
+        ) { Text("Gửi") }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsSheet(
+    initial: ServerConfig,
+    hint: String?,
+    voice: VoiceUiState,
+    onDismiss: () -> Unit,
+    onSave: (ServerConfig) -> Unit,
+    onTest: (ServerConfig) -> Unit,
+    onScanQr: () -> Unit,
+    onToggleVoice: (Boolean) -> Boolean,
+) {
+    var url by remember { mutableStateOf(initial.baseUrl) }
+    var key by remember { mutableStateOf(initial.apiKey) }
+    var profile by remember { mutableStateOf(initial.profile) }
+    var model by remember { mutableStateOf(initial.model) }
+
+    val current = ServerConfig(url, key, profile, model)
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = remember { ConfigStore(context) }
+    var voiceEnabled by remember { mutableStateOf(voice.enabled) }
+    var porcupineKey by remember { mutableStateOf(store.loadPorcupineKey()) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Cài đặt kết nối", style = MaterialTheme.typography.titleLarge)
+
+            androidx.compose.material3.OutlinedButton(
+                onClick = onScanQr,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("📷 Quét QR từ máy tính") }
+
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("Server URL (vd: https://abc.trycloudflare.com)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it },
+                label = { Text("API key (API_SERVER_KEY)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = profile,
+                onValueChange = { profile = it },
+                label = { Text("Profile (để trống = dùng key .env; hoặc dalek / doraemon / heimeringer)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Model") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            if (hint != null) {
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = Color(0xFF1565C0))
+            }
+
+            androidx.compose.material3.Divider()
+
+            Text("Trợ lý giọng nói", style = MaterialTheme.typography.titleMedium)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Nghe \"Hey Hermes\"", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (voiceEnabled) "Đang bật — nói \"Hey Hermes\" để ra lệnh"
+                        else "Đang tắt — bấm micro trong app để nói",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = voiceEnabled,
+                    onCheckedChange = { on ->
+                        voiceEnabled = on
+                        val active = onToggleVoice(on)
+                        if (on && !active) {
+                            Toast.makeText(
+                                context,
+                                "Chưa cấu hình wake word — dùng nút micro",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                )
+            }
+
+            OutlinedTextField(
+                value = porcupineKey,
+                onValueChange = { porcupineKey = it },
+                label = { Text("Picovoice AccessKey (cho \"Hey Hermes\", để trống = tắt)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    store.savePorcupineKey(porcupineKey)
+                    Toast.makeText(context, "Đã lưu AccessKey", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Lưu AccessKey") }
+
+            androidx.compose.material3.Divider()
+
+            AssistantHelpSection()
+
+            androidx.compose.material3.Divider()
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                androidx.compose.material3.OutlinedButton(onClick = { onTest(current) }) {
+                    Text("Kiểm tra")
+                }
+                androidx.compose.material3.Button(
+                    onClick = { onSave(current) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Lưu") }
+            }
+        }
+    }
+}
+
+/**
+ * Tells the user exactly what to say to Google Assistant to reach Hermes.
+ *
+ * Wording matters here: free-text requests must use the *custom* capability
+ * ("ask <app> <request>") declared in res/xml/shortcuts.xml. The built-in
+ * "open <app>" route only opens the app, it carries no sentence.
+ */
+@Composable
+private fun AssistantHelpSection() {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Dùng với Trợ lý Google", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Nói câu lệnh vào app, Hermes trên PC trả lời",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(if (expanded) "Ẩn" else "Xem")
+            }
+        }
+
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Nói với Trợ lý Google:",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "• \"Hey Google, ask Hermes <câu hỏi>\"\n" +
+                    "• \"Ok Google, hỏi Hermes kiểm tra RAM\"\n\n" +
+                    "Chỉ mở app (không gửi lệnh):\n" +
+                    "• \"Hey Google, open Hermes\"",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Lưu ý: Trợ lý Google / Claude-Fable chỉ *chuyển câu lệnh* vào app, " +
+                    "não vẫn nằm trên Hermes PC. Cần bật \"Đọc trả lời\" để nghe " +
+                    "Hermes đọc kết quả. Nếu chưa thấy app trong Trợ lý lần đầu, " +
+                    "hãy mở app một lần rồi thử lại.",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}

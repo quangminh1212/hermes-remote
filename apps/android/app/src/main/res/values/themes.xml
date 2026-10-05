@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  App theme.
+
+  Compose draws the entire UI, so this theme only styles the window itself: the
+  launch background and the system bars. The real colour system lives in
+  XLabTheme.kt, built from the same XLab tokens as the web project.
+
+  `windowBackground` is the dark surface colour because the app is dark-only
+  (matching the XLab dark theme); without it the window flashes white between
+  process start and the first Compose frame.
+-->
+<resources>
+    <style name="Theme.HermesRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/xlab_bg_primary</item>
+        <item name="android:statusBarColor">@color/xlab_bg_secondary</item>
+        <item name="android:navigationBarColor">@color/xlab_bg_secondary</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

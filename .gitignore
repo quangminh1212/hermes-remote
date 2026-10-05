@@ -1,32 +1,22 @@
-# Kotlin files
-*.class
-*.jar
-*.war
+# --- Secrets (never commit) -------------------------------------------------
+# The Hermes API key lives in the PC's Hermes .env, outside this repo.
+# See docs/SECURITY.md.
+.env
+*.env.local
+*.jks
+*.keystore
+keystore.properties
+credentials.xml
+secret.properties
+secrets.yml
 
-# Gradle
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!gradlew
-!gradlew.bat
-local.properties
+# --- Node -------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+*.tgz
 
-# Android Studio
-.idea/
-.DS_Store
-*.iml
-*.hprof
-*.log
-*.pk2
-*.ptf
-captures/
-
-# Generated files
-app/build/
-app/out/
-*/gen/
-
-# Python
+# --- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -34,69 +24,37 @@ __pycache__/
 .Python
 env/
 venv/
-ENV/
-.venv
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Build outputs
-*.apk
-*.aar
-*.ap_
-*.aab
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# OS generated files
-.DS_Store
-nul
-.NUL
-android-app/nul
-.nul
-.NUL.*
-.AUX
-.AUX.*
-.com
-.COM
-.con
-.CON
-.CTL
-.CTL.*
-.device
-.DEVICE
-.dll
-.DLL
-_drv..*
-.EXE
-.exe
-.sys
-.SYS
-
-# Environment variables
-.env
-*.env.local
-
-# Keystore files
-*.jks
-*.keystore
-keystore.properties
-
-# Secrets and credentials
-credentials.xml
-secret.properties
-secrets.yml
-
-# Test coverage
-.coverage
+.venv/
+.pytest_cache/
 htmlcov/
+.coverage
 .tox/
 
-# Temporary files
+# --- Gradle / Android -------------------------------------------------------
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradlew
+!gradlew.bat
+local.properties
+captures/
+*.apk
+*.aar
+*.aab
+*.ap_
+*.iml
+.idea/
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# Windows reserved device names sometimes produced by bad tooling.
+nul
+.NUL
+
+# --- Editors / misc ---------------------------------------------------------
+*.log
 tmp/
 temp/
 *.tmp
