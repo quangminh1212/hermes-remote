@@ -41,11 +41,30 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- App Actions (Google Assistant): "Hey Google, mở Hermes hỏi …".
-                 Assistant launches this activity with the query in an extra. -->
+            <!-- App Actions (Google Assistant / Claude-Fable):
+                 "Hey Google, ask Hermes <anything>".
+                 Assistant launches this activity with the query in an extra.
+                 See res/xml/shortcuts.xml for the capability declarations. -->
             <intent-filter>
                 <action android:name="com.hermes.bridge.action.ASK" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <!-- Voice-assistant hand-off: lets the Assistant (and any other
+                 system voice interaction service) route a spoken request to
+                 Hermes instead of only opening the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <!-- Plain deep link, so a shortcut or another app can prefill a
+                 prompt: hermes://ask?query=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hermes" android:host="ask" />
             </intent-filter>
 
             <!-- Lets Assistant surface the app for the OPEN_APP_FEATURE BII. -->

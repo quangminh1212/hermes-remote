@@ -4,7 +4,62 @@
 
 ## Trạng thái: GẦN XONG — 2 pack đã build & test thật
 
-### 0. TRỢ LÝ GIỌNG NÓI (A + B + C) — MỚI (branch `feat/voice-assistant`)
+### 0.5. TÍCH HỢP TRỢ LÝ GOOGLE — ĐÃ XONG & TEST THẬT (session 4)
+
+> Yêu cầu: "tích hợp app android này vào trợ lý google, để nói chuyện với trợ lý google là Hermes PC tự nhận được".
+
+**KẾT LUẬN ĐÃ KIỂM CHỨNG BẰNG NGUỒN GOOGLE (tháng 9/2026):**
+
+| Câu hỏi | Sự thật | Nguồn |
+|---|---|---|
+| App có *thay não* "Hey Google" được không? | **KHÔNG.** Conversational Actions khai tử 2023. App chỉ có thể được Trợ lý **gọi tới**. | Google đã thông báo 2023 |
+| App Actions còn sống không? | **CÒN.** Trang `developer.android.com/guide/app-actions/overview` cập nhật **2026-07-16**, mô tả `<capability>` trong `shortcuts.xml` là cách hiện hành. | fetch trực tiếp |
+| AppFunctions (API mới) dùng được chưa? | **CHƯA.** Cần **API 36** + **Early Access Program invite**; "only a limited number of apps and system agents can access the entire pipeline". Cập nhật 2026-09-22. | `developer.android.com/ai/appfunctions` |
+| Trợ lý Google có bị khai tử? | **CÓ** — đang chuyển dần sang **Gemini** (hoàn tất ~9/2026). Nhưng App Actions vẫn là kênh tích hợp, và Claude-Fable vẫn đọc `shortcuts.xml`. | TechRepublic, 9to5google |
+
+→ **Đã làm đúng kênh còn sống: App Actions + `shortcuts.xml`.**
+
+**3 LỖI THẬT ĐÃ SỬA:**
+
+1. **BUG NẶNG — intent bị nuốt khi app đang mở.** `launchMode=singleTask` → intent thứ 2 đi vào `onNewIntent`. Code cũ đọc `query` nhưng **payload BII thật của Trợ lý không nằm ở key đó** → câu lệnh rơi mất im lặng. Đã viết `AssistantIntent` xử lý **4 dạng giao hàng** (xem bảng dưới).
+2. **`shortcuts.xml` sai — free text gắn vào BII không chở được câu.** `actions.intent.OPEN_APP_FEATURE` có tham số `feature` là ***entity*** tra trong catalog cố định của app, **không** mang được câu bất kỳ. Đây chính là lý do "hey google ask <app> ..." im lặng. Đã đổi sang **`custom.hermes.ASK`** (custom capability, `required=true`); giữ `OPEN_APP_FEATURE` ở dạng `required=false` cho "open Hermes" trần.
+3. **Gửi trùng khi xoay màn hình / process restore.** `onCreate` chạy lại → gửi lại prompt + đọc lại toàn bộ. Đã chặn bằng `savedInstanceState == null`.
+
+**Thêm mới:** `VOICE_COMMAND` intent-filter + deep link `hermes://ask?query=…` + `sendFromAssistant()` (lượt do Trợ lý gọi được **đọc to** như lượt nói) + banner UI "🎤 Từ Trợ lý Google" + mục hướng dẫn trong ⚙ Cài đặt.
+
+**4 DẠNG GIAO HÀNG — ĐÃ TEST THẬT 100% TRÊN EMULATOR:**
+
+| Dạng | Lệnh adb | Kết quả |
+|---|---|---|
+| extra `query` (capability của ta) | `am start -a com.hermes.bridge.action.ASK -e query "Hermes, chay test du an"` | ✅ gửi `chay test du an` (đã cắt tiền tố "Hermes,") |
+| `android.intent.extra.TEXT` | `-e android.intent.extra.TEXT "kiem tra dung luong dia"` | ✅ |
+| deep link | `am start -a VIEW -d "hermes://ask?query=git%20status%20du%20an"` | ✅ |
+| `VOICE_COMMAND` | `am start -a android.intent.action.VOICE_COMMAND -e query "…"` | ✅ |
+| **app đang MỞ (hot start)** | (bug cũ nuốt mất) | ✅ **đã thêm lượt thứ 2 đúng** |
+| "Hermes" trần, không có câu hỏi | `-e query "Hermes"` | ✅ **KHÔNG gửi** lượt vô nghĩa |
+
+**VÒNG KHÉP KÍN CHẠY THẬT (đây là bằng chứng quan trọng nhất):**
+```
+am start -a com.hermes.bridge.action.ASK
+  --es query "Hermes, cho toi biet 2+2 bang may"
+→ app (banner "🎤 Từ Trợ lý Google", prompt "cho toi biet 2+2 bang may")
+→ gateway Hermes THẬT (127.0.0.1:8642, hermes-agent 0.21.5)
+→ Hermes trả lời: "2 + 2 = **4** bạn nhé!"
+→ app đọc to ("🔊 Đang đọc trả lời…")
+```
+**Trợ lý Google → app → Hermes PC → trả lời → đọc to: XONG.**
+
+- **Test:** Android **69/69 PASS** (51 cũ + **18 mới** `AssistantIntentTest`). npm **15/15 PASS**.
+- **Build:** `assembleDebug` (12.59 MB) + `assembleRelease` (**4.01 MB**) OK. **Chữ ký release GIỮ NGUYÊN** `CN=Hermes Remote`, SHA-256 `f4fb5b41…7420` (apksigner verify: v2 OK) → **auto-update không gãy**. Đã cài **APK release** lên emulator và verify route Trợ lý **sống sót qua R8**.
+- **Test bắt được 1 bug thật:** regex cắt tiền tố khớp `hermes` trước `hermes remote` → để lại rác `"Remote, chạy test"`. Đã sửa (khớp tên dài trước).
+- **Vì sao emulator AOSP KHÔNG test được phần định tuyến của Trợ lý:** đã kiểm thật — `pm query-services -a android.service.voice.VoiceInteractionService` trả **"No services found"** (không có Google Play Services, không có `com.google.android.googlequicksearchbox`). Nên *hợp đồng intent* verify được 100%, còn *câu nói "Hey Google"* cần máy thật.
+
+**CÒN LẠI (cần máy thật + tài khoản Google):**
+1. Đăng ký App Action trên **Play Console** (hoặc Assistant test tool) để Trợ lý định tuyến "ask Hermes …" tới app.
+2. Thử trên **điện thoại thật** có Trợ lý Google/Gemini.
+3. (Nâng cấp tương lai) **AppFunctions** khi Google mở Early Access: cho Claude-Fable gọi thẳng hàm Kotlin trong app, không cần app mở.
+
+### 0. TRỢ LÝ GIỌNG NÓI (A + B + C) — (branch `feat/voice-assistant`)
 > Yêu cầu: biến app thành trợ lý ngoài đời thực, não vẫn trên Hermes PC, "Google Assistant thật" + wake word "Hey Hermes".
 > **Sự thật quan trọng:** Google **đã khai tử Conversational Actions (2023)** → KHÔNG thể thay não "Hey Google" bằng app bên thứ ba. Vì vậy làm 3 tầng bổ trợ:
 - **A. Trợ lý giọng trong app (lõi, khả thi 100%):** STT hệ thống (`SpeechRecognizerManager`) → `send()` → TTS hệ thống (`TtsSpeaker`, có strip markdown) đọc to. Nút 🎙 trong ô nhập (tap để nói). Wake word **"Hey Hermes"** qua **Porcupine** (`WakeWordDetector`) trong `VoiceAssistantService` (foreground, type `microphone`, notification "Hermes đang trợ lý"). **Thiếu AccessKey → fallback tap-to-talk, KHÔNG crash** (đã verify). `VoiceController` interface giữ ViewModel JVM-testable. `VoiceBus` nối service→UI. `BootReceiver` bật lại sau reboot.

@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
     /** Query handed in by a Google Assistant "App Action" (Phase B). */
     private var pendingAssistantQuery: String? = null
 
+    /** Last query the Assistant handed us; drives the "from Assistant" banner. */
+    private var lastAssistantQuery: String? = null
+
     private val viewModel: MainViewModel by viewModels {
         MainViewModel.factory(
             ConfigStore(applicationContext),
@@ -94,7 +97,11 @@ class MainActivity : ComponentActivity() {
         voiceController.warmUp()
 
         // A Google Assistant "ask Hermes …" action arrives as an intent extra.
-        pendingAssistantQuery = extractAssistantQuery(intent)
+        // `savedInstanceState != null` means this is a config-change/process
+        // restore, not a fresh Assistant hand-off — honouring the intent again
+        // would resend the prompt (and the reply would be spoken twice).
+        pendingAssistantQuery =
+            if (savedInstanceState == null) extractAssistantQuery(intent) else null
 
         // Kick off an update check when the app opens (rate-limited to 6h by
         // the view model, so repeated launches are cheap).
@@ -125,14 +132,21 @@ class MainActivity : ComponentActivity() {
         // Run a pending Assistant query once the UI exists.
         pendingAssistantQuery?.let { query ->
             pendingAssistantQuery = null
-            viewModel.send(query)
+            lastAssistantQuery = query
+            viewModel.sendFromAssistant(query)
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        extractAssistantQuery(intent)?.let { viewModel.send(it) }
+        // The Assistant hands off the query while the app may already be open
+        // (launchMode=singleTask). Route it through the same path as a cold
+        // start so the reply is spoken when speak-replies is on.
+        extractAssistantQuery(intent)?.let { query ->
+            lastAssistantQuery = query
+            viewModel.sendFromAssistant(query)
+        }
     }
 
     override fun onDestroy() {
@@ -167,14 +181,15 @@ class MainActivity : ComponentActivity() {
         /** Extra carrying the Assistant query text. */
         const val EXTRA_QUERY = "query"
 
-        /** Pull a query out of an Assistant/App-Action intent, if present. */
-        fun extractAssistantQuery(intent: Intent?): String? {
-            intent ?: return null
-            val raw = intent.getStringExtra(EXTRA_QUERY)
-                ?: intent.getStringExtra(Intent.EXTRA_TEXT)
-                ?: intent.data?.getQueryParameter("query")
-            return raw?.trim()?.takeIf { it.isNotEmpty() }
-        }
+        /**
+         * Pull a query out of an Assistant / App-Action intent, if present.
+         *
+         * The parsing rules live in [com.hermes.bridge.voice.AssistantIntent] so
+         * they are unit-testable on the JVM; they must stay in sync with the
+         * capability declarations in `res/xml/shortcuts.xml`.
+         */
+        fun extractAssistantQuery(intent: Intent?): String? =
+            com.hermes.bridge.voice.AssistantIntent.fromIntent(intent)
     }
 }
 
@@ -264,6 +279,11 @@ private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
                 onStopSpeaking = viewModel::stopSpeaking,
             )
 
+            AssistantBanner(
+                prompt = state.assistantPrompt,
+                onDismiss = viewModel::clearAssistantPrompt,
+            )
+
             Box(modifier = Modifier.weight(1f)) {
                 if (state.messages.isEmpty()) {
                     EmptyState(onScanQr = startScan, scanError = scanError ?: state.connectionHint)
@@ -314,6 +334,36 @@ private fun ChatScreen(viewModel: MainViewModel, state: ChatUiState) {
             },
             onToggleVoice = viewModel::setVoiceAssistantEnabled,
         )
+    }
+}
+
+/**
+ * Banner shown when a prompt arrived from Google Assistant, so the user can see
+ * the "Hey Google → Hermes" hop actually landed (and dismiss the record of it).
+ */
+@Composable
+private fun AssistantBanner(prompt: String?, onDismiss: () -> Unit) {
+    val text = prompt ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("🎤 Từ Trợ lý Google", style = MaterialTheme.typography.labelLarge)
+                Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+            }
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
     }
 }
 
@@ -686,6 +736,10 @@ private fun SettingsSheet(
 
             androidx.compose.material3.Divider()
 
+            AssistantHelpSection()
+
+            androidx.compose.material3.Divider()
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { onTest(current) }) {
                     Text("Kiểm tra")
@@ -695,6 +749,56 @@ private fun SettingsSheet(
                     modifier = Modifier.weight(1f),
                 ) { Text("Lưu") }
             }
+        }
+    }
+}
+
+/**
+ * Tells the user exactly what to say to Google Assistant to reach Hermes.
+ *
+ * Wording matters here: free-text requests must use the *custom* capability
+ * ("ask <app> <request>") declared in res/xml/shortcuts.xml. The built-in
+ * "open <app>" route only opens the app, it carries no sentence.
+ */
+@Composable
+private fun AssistantHelpSection() {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Dùng với Trợ lý Google", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Nói câu lệnh vào app, Hermes trên PC trả lời",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(if (expanded) "Ẩn" else "Xem")
+            }
+        }
+
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Nói với Trợ lý Google:",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "• \"Hey Google, ask Hermes <câu hỏi>\"\n" +
+                    "• \"Ok Google, hỏi Hermes kiểm tra RAM\"\n\n" +
+                    "Chỉ mở app (không gửi lệnh):\n" +
+                    "• \"Hey Google, open Hermes\"",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Lưu ý: Trợ lý Google / Claude-Fable chỉ *chuyển câu lệnh* vào app, " +
+                    "não vẫn nằm trên Hermes PC. Cần bật \"Đọc trả lời\" để nghe " +
+                    "Hermes đọc kết quả. Nếu chưa thấy app trong Trợ lý lần đầu, " +
+                    "hãy mở app một lần rồi thử lại.",
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }

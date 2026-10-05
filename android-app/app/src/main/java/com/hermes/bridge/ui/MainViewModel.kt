@@ -31,6 +31,8 @@ data class ChatUiState(
     val connectionHint: String? = null,
     val update: UpdateUiState = UpdateUiState(),
     val voice: VoiceUiState = VoiceUiState(),
+    /** Non-null when the last turn was handed over by Google Assistant. */
+    val assistantPrompt: String? = null,
 )
 
 /** Phase of a voice turn, used to drive the mic button + status text. */
@@ -392,6 +394,25 @@ class MainViewModel(
                 voice = _state.value.voice.copy(phase = VoicePhase.IDLE),
             )
         }
+    }
+
+    /**
+     * Send a prompt that arrived from Google Assistant / an App Action.
+     *
+     * Treated as a spoken turn: the user asked out loud via the Assistant, so
+     * the reply is read back through TTS. Marks the state so the UI can show
+     * where the prompt came from.
+     */
+    fun sendFromAssistant(prompt: String) {
+        val text = prompt.trim()
+        if (text.isEmpty()) return
+        spokenSession = true
+        _state.value = _state.value.copy(assistantPrompt = text)
+        send(text)
+    }
+
+    fun clearAssistantPrompt() {
+        _state.value = _state.value.copy(assistantPrompt = null)
     }
 
     // --- Voice assistant -----------------------------------------------------
