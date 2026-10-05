@@ -38,7 +38,12 @@ This finds your Hermes `.env`, ensures the gateway is running, opens a
 Cloudflare quick tunnel, and shows a QR page in your browser.
 
 Flags: `--lan` (skip the tunnel), `--port <n>`, `--profile <name>`,
-`--no-open`, `-h`.
+`--agent <id>` (answer through a local CLI: claude, codex, Anthropic, opencode),
+`--no-agents` (off), `--lang <en|vi|zh>`, `--no-open`, `-h`.
+
+When an agent is selected the QR page and the phone's connect payload point at a
+sidecar "agent bridge" instead of the Hermes gateway, and carry the list of
+agents so the phone can switch between them from the model field.
 
 ### 2. On the phone
 

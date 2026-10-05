@@ -2,7 +2,52 @@
 
 > Dán cả file này (hoặc nội dung dưới) vào **session mới** để tiếp tục.
 
-## Trạng thái: GẦN XONG — đã tái cấu trúc theo chuẩn quốc tế (session 5)
+## Trạng thái: ĐANG LÀM DỞ TRÊN BRANCH `refactor/international-layout` (session 6)
+
+> **QUAN TRỌNG — NHỮNG SESSION TRƯỚC GHI "working tree SẠCH" LÀ KHÔNG ĐÚNG.**
+> Khi mở lại repo này, `git status` in ra clean chỉ vì **biến môi trường kế
+> thừa `GIT_CONFIG_*` bị hỏng** làm `git` báo lỗi "missing config key" trước
+> khi liệt kê file. Luôn xoá các biến `GIT_CONFIG_*` trước khi chạy git:
+> ```powershell
+> Get-ChildItem env: | Where-Object Name -like 'GIT_CONFIG*' | ForEach-Object { Remove-Item "env:$($_.Name)" }
+> ```
+> Thực tế: branch có **3 commit chưa push** + **rất nhiều thay đổi chưa commit**
+> (i18n + agent bridge). Xem mục `## Session 6` ở dưới.
+
+### 0.10. I18N (en/vi/zh) + AGENT BRIDGE (session 6 — ĐANG LÀM)
+
+**Hai tính năng mới, chưa commit, đã verify xanh:**
+1. **i18n** — CLI + trang QR + app Android nói 3 thứ tiếng (en/vi/zh). CLI chọn
+   qua `--lang` > `HERMES_LANG` > locale máy (mặc định en). App dùng locale máy
+   qua `values-vi` / `values-zh`. Mọi chuỗi user-facing nằm trong resource — VM
+   không còn string cứng (mới `StringProvider` / `AndroidStringProvider`).
+   - 83 key Android (en=vi=zh, không thiếu), 73 key CLI (cũng đồng bộ).
+2. **Agent bridge** — CLI có thể chạy endpoint phụ (`--agent <id>`, tắt bằng
+   `--no-agents`) trả lời bằng CLI agent cài trên máy: `claude`, `codex`,
+   `Anthropic`, `opencode`. Hiện như `/v1/models` để app đổi agent qua trường
+   `model` có sẵn. Xử lý shim `.cmd` Windows + an toàn shell (prompt chứa `"`
+   hay `&` không bị cmd.exe đọc lại). **Đã verify end-to-end với CLI thật, 3
+   thứ tiếng.**
+
+**BUG ĐÃ SỬA (session 6):** trang QR và `/api/connect` trước đây **build riêng**
+nên lệch nhau — trang QR (mục tiêu quét theo hướng dẫn) trỏ app vào gateway Hermes
+và **không bao giờ quảng cáo agent bridge**. Giờ CLI build **một payload duy nhất**,
+mọi route giao hàng phục vụ nguyên bản. `ConnectPayload.kt` thêm `agents` /
+`defaultAgent`.
+
+**Số test thực tế (đo lại session 6, không phải số cũ):**
+| Hạng mục | Kết quả |
+|---|---|
+| Android unit tests | **72 PASS** (70 cũ + 2 mới `ConnectPayloadTest`) |
+| Pairing CLI tests | **93 PASS** (89 cũ + 4 mới `pack.test.js`) |
+| E2E agent bridge (CLI thật) | **OK** — grok trả lời đúng 3 thứ tiếng |
+| `/api/connect` live | mang `agents` + `baseUrl` = bridge (`:8643`) ✅ |
+
+**CÒN LẠI (chưa làm session 6):** app Android chưa có UI picker chọn agent (mới
+config/payload thôi — app vẫn dùng trường `model`). Muốn picker thì thêm Compose
++ test. Chưa publish npm. Branch chưa push (origin chỉ có `main`).
+
+---
 
 ### 0.9. TÁI CẤU TRÚC + ĐỔI PACKAGE + UI XLAB (session 5)
 
