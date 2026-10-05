@@ -36,6 +36,98 @@ test("lanIP returns a non-empty IPv4-ish string", () => {
   assert.ok(typeof ip === "string" && ip.length >= 7);
 });
 
+test("parseArgs: --agent and --no-agents shape the bridge", () => {
+  assert.equal(parseArgs([]).agents, true);
+  assert.equal(parseArgs([]).agent, "");
+  assert.equal(parseArgs(["--agent", "codex"]).agent, "codex");
+  assert.equal(parseArgs(["--no-agents"]).agents, false);
+  assert.equal(parseArgs(["--lang", "vi"]).lang, "vi");
+});
+
+test("webview server: an explicit payload is served verbatim", async () => {
+  // The CLI builds the payload once so the terminal QR, the page QR and
+  // /api/connect cannot disagree. This pins that the server does not rebuild it.
+  const payload = {
+    v: 1,
+    baseUrl: "http://192.168.1.113:8643",
+    fallbackUrl: "http://192.168.1.113:8643",
+    apiKey: "k",
+    profile: "",
+    model: "claude",
+    profiles: [],
+    agents: ["claude", "codex"],
+    defaultAgent: "claude",
+    lang: "vi",
+  };
+  const app = createServer({
+    payload,
+    publicUrl: "https://should-be-ignored.example",
+    localUrl: "http://127.0.0.1:1",
+    apiKey: "wrong",
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const json = await getJson(`http://127.0.0.1:${port}/api/connect`);
+    assert.deepEqual(json, payload);
+  } finally {
+    server.close();
+  }
+});
+
+test("webview server: /api/connect carries the agent list", async () => {
+  const app = createServer({
+    publicUrl: "https://abc.trycloudflare.com",
+    localUrl: "http://192.168.1.113:8642",
+    apiKey: "secret-key-value",
+    agents: ["claude", "codex"],
+    defaultAgent: "codex",
+  });
+  const { port, server } = await listen(app, 0);
+  try {
+    const json = await getJson(`http://127.0.0.1:${port}/api/connect`);
+    assert.deepEqual(json.agents, ["claude", "codex"]);
+    assert.equal(json.defaultAgent, "codex");
+  } finally {
+    server.close();
+  }
+});
+
+test("the page QR and /api/connect come from the same payload", async () => {
+  // The page shows <img src="/qr.png">, and both /qr.png and /api/connect are
+  // generated from the one payload the CLI hands over. The regression this
+  // guards: the page QR used to be built separately and pointed the phone at
+  // the gateway instead of the agent bridge.
+  const payload = {
+    v: 1,
+    baseUrl: "http://10.0.0.5:8643",
+    fallbackUrl: "http://10.0.0.5:8643",
+    apiKey: "k",
+    profile: "",
+    model: "claude",
+    profiles: [],
+    agents: ["claude"],
+    defaultAgent: "claude",
+    lang: "en",
+  };
+  const app = createServer({ payload });
+  const { port, server } = await listen(app, 0);
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    const [json, html, png] = await Promise.all([
+      getJson(`${base}/api/connect`),
+      getText(`${base}/`),
+      getBuffer(`${base}/qr.png`),
+    ]);
+    // The route serves the payload untouched.
+    assert.deepEqual(json, payload);
+    // The page's QR image is that route's PNG, not a second encoding.
+    assert.ok(html.includes('src="/qr.png"'), "the page points at /qr.png");
+    assert.ok(png.length > 0 && png.subarray(0, 8).toString("hex") === "89504e470d0a1a0a", "png magic");
+  } finally {
+    server.close();
+  }
+});
+
 test("webview server: /api/connect returns the connect payload", async () => {
   const app = createServer({
     publicUrl: "https://abc.trycloudflare.com",
@@ -122,6 +214,11 @@ function getBuffer(url) {
       })
       .on("error", reject);
   });
+}
+
+/** GET a URL and return its body as a UTF-8 string. */
+function getText(url) {
+  return getBuffer(url).then((b) => b.toString("utf8"));
 }
 
 /** POST a JSON body and return { status, headers, text }. */

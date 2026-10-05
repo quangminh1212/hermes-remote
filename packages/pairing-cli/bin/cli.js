@@ -18,10 +18,22 @@ const QRCode = require("qrcode");
 const config = require("../lib/config");
 const gateway = require("../lib/gateway");
 const tunnel = require("../lib/tunnel");
+const registry = require("../lib/agent-registry");
+const bridge = require("../lib/agent-bridge");
+const { translator, resolveLang, LANGS } = require("../lib/i18n");
 const { createServer, listen } = require("../lib/server");
 
 function parseArgs(argv) {
-  const a = { tunnel: true, open: true, port: 0, profile: "", webhookToken: "" };
+  const a = {
+    tunnel: true,
+    open: true,
+    port: 0,
+    profile: "",
+    webhookToken: "",
+    agents: true,
+    agent: "",
+    lang: "",
+  };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--no-tunnel" || t === "--lan") a.tunnel = false;
@@ -31,29 +43,41 @@ function parseArgs(argv) {
     else if (t === "--profile") a.profile = String(argv[++i] || "");
     else if (t === "--webhook-token") a.webhookToken = String(argv[++i] || "");
     else if (t === "--no-webhook") a.webhookToken = "";
+    else if (t === "--agent") a.agent = String(argv[++i] || "");
+    else if (t === "--no-agents") a.agents = false;
+    else if (t === "--lang") a.lang = String(argv[++i] || "");
     else if (t === "--help" || t === "-h") a.help = true;
   }
   return a;
 }
 
-function printHelp() {
-  console.log(`
-hermes-remote — kết nối app Hermes Remote (Android) với Hermes trên PC này.
-
-Cách dùng:
-  hermes-remote [tuỳ chọn]
-
-Tuỳ chọn:
-  --no-tunnel, --lan   Chỉ dùng địa chỉ LAN, không mở tunnel công khai
-  --tunnel             (mặc định) Mở tunnel công khai để dùng từ 4G
-  --port <n>           Cổng cho trang webview QR (mặc định: tự chọn)
-  --profile <tên>      Dùng profile Hermes này cho điện thoại (mặc định: key gốc)
-  --webhook-token <t>  Bật webhook /api/webhook/ask với token bí mật <t>
-                       (dùng cho IFTTT / Google Home điều khiển bằng giọng)
-  --no-webhook         Tắt webhook (mặc định cũng tắt nếu không truyền token)
-  --no-open            Không tự mở trình duyệt
-  -h, --help           Hiện trợ giúp
-`);
+/**
+ * Print usage.
+ *
+ * The option list is translated (see lib/i18n.js); English is the fallback so a
+ * reader with an unexpected locale still gets understandable help.
+ */
+function printHelp(lang) {
+  const t = translator(lang);
+  const lines = [
+    "",
+    t("help_usage_title"),
+    "  hermes-remote [options]",
+    "",
+    t("help_options_title"),
+    "  " + t("help_opt_tunnel"),
+    "  " + t("help_opt_no_tunnel"),
+    "  " + t("help_opt_port"),
+    "  " + t("help_opt_profile"),
+    "  " + t("help_opt_webhook"),
+    "  " + t("help_opt_agent"),
+    "  " + t("help_opt_no_agents"),
+    "  " + t("help_opt_lang"),
+    "  " + t("help_opt_no_open"),
+    "  " + t("help_opt_help"),
+    "",
+  ];
+  console.log(lines.join("\n"));
 }
 
 /** Best-effort LAN IPv4 of this machine. */
@@ -102,56 +126,139 @@ function banner(lines) {
   console.log("─".repeat(58) + "\n");
 }
 
+/**
+ * Start the agent bridge in-process.
+ *
+ * Runs in this process rather than as a child so Ctrl+C tears everything down
+ * together, and so the bridge can report "agent not installed" as a live 503
+ * instead of the port simply being closed.
+ *
+ * @param {{port:number, apiKey:string, defaultAgent?:string, host?:string}} opts
+ * @returns {Promise<{url:string, close:() => Promise<void>, proc:null}>}
+ */
+async function startAgentBridge(opts) {
+  const host = opts.host || "0.0.0.0";
+  const handle = await bridge.listenBridge(
+    { apiKey: opts.apiKey, defaultAgent: opts.defaultAgent || "" },
+    opts.port,
+    host,
+  );
+  return {
+    url: `http://${lanIP()}:${handle.port}`,
+    close: handle.close,
+    // No child process: `proc` is kept so shutdown() can stay shape-compatible.
+    proc: null,
+    _handle: handle,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (args.help) return printHelp();
+  const t = translator(args.lang);
+  if (args.help) return printHelp(args.lang);
 
-  banner(["HERMES REMOTE", "Kết nối điện thoại Android với Hermes trên máy này"]);
+  banner([t("banner_title"), t("banner_sub")]);
 
   // 1. Read Hermes config.
-  const cfg = config.readHermesConfig();
-  console.log("  ✔ Đọc cấu hình Hermes:", cfg.envFile);
+  const cfg = config.readHermesConfig(null, t);
+  console.log("  ✔ " + t("reading_config", cfg.envFile));
   const profiles = config.listProfiles(cfg.envFile);
   const localUrl = `http://${lanIP()}:${cfg.port}`;
-  console.log("  ✔ Địa chỉ LAN:", localUrl);
+  console.log("  ✔ " + t("lan_address", localUrl));
 
   // Pick the profile the phone will connect as. Empty = top-level key.
   let profile = args.profile || "";
   if (profile && !profiles.includes(profile)) {
     console.log(
-      "  ⚠ Profile \"" + profile + "\" không có trong danh sách (" +
-        (profiles.length ? profiles.join(", ") : "không có profile nào") + ")."
+      "  ⚠ " + t("profile_unknown", profile, profiles.length ? profiles.join(", ") : t("profiles_none"))
     );
-    console.log("    → Dùng key gốc (profile rỗng).");
+    console.log("    " + t("profile_fallback"));
     profile = "";
   } else if (profile) {
-    console.log("  ✔ Profile cho điện thoại:", profile);
+    console.log("  ✔ " + t("profile_ok", profile));
   }
 
   // 2. Make sure the gateway is up.
-  await gateway.ensureGateway(cfg.port, (m) => console.log("  … " + m));
+  await gateway.ensureGateway(cfg.port, (m) => console.log("  … " + m), 60000, t);
 
-  // 3. Tunnel (default) for use anywhere.
+  // 3. Start the agent bridge, unless disabled.
+  //
+  // This is what lets the phone pick *which* CLI answers: the app always POSTs
+  // to one endpoint, and the model field in that request names the agent. The
+  // bridge listens on a port of its own so it never shadows the Hermes gateway.
+  let bridgeProc = null;
+  let bridgeHandle = null;
+  let bridgeUrl = "";
+  let agents = [];
+  if (args.agents) {
+    // available() returns descriptors; the CLI only needs the ids, both for
+    // the console line and for the QR/page payload the phone reads.
+    agents = registry.available().map((a) => a.id);
+    if (agents.length) {
+      console.log("  ✔ " + t("agents_found", agents.join(", ")));
+      const started = await startAgentBridge({
+        port: cfg.port + 1,
+        apiKey: cfg.apiKey,
+        defaultAgent: args.agent,
+      });
+      bridgeProc = started.proc;
+      bridgeHandle = started._handle;
+      bridgeUrl = started.url;
+      console.log("  ✔ " + t("agents_bridge", bridgeUrl));
+    } else {
+      console.log("  ℹ " + t("agents_none"));
+    }
+  } else {
+    console.log("  ℹ " + t("agents_off"));
+  }
+
+  // 4. Tunnel (default) for use anywhere.
   let publicUrl = localUrl;
   let tunnelProc = null;
   if (args.tunnel) {
     try {
-      const bin = await tunnel.ensureCloudflared((m) => console.log("  … " + m));
-      console.log("  … Đang mở tunnel công khai (cloudflared)...");
-      const t = await tunnel.startTunnel(`http://127.0.0.1:${cfg.port}`, bin);
-      publicUrl = t.url;
-      tunnelProc = t.proc;
-      console.log("  ✔ Tunnel công khai:", publicUrl);
+      const bin = await tunnel.ensureCloudflared((m) => console.log("  … " + m), t);
+      console.log("  … " + t("tunnel_opening"));
+      const tun = await tunnel.startTunnel(`http://127.0.0.1:${cfg.port}`, bin, 45000, t);
+      publicUrl = tun.url;
+      tunnelProc = tun.proc;
+      console.log("  ✔ " + t("tunnel_ready", publicUrl));
     } catch (e) {
-      console.log("  ⚠ Không mở được tunnel (" + e.message + ").");
-      console.log("    → Sẽ dùng địa chỉ LAN. Dùng từ 4G sẽ cần tunnel.");
+      console.log("  ⚠ " + t("tunnel_failed", e.message));
+      console.log("    " + t("tunnel_fallback"));
     }
   } else {
-    console.log("  ℹ Chế độ LAN (không tunnel). Điện thoại phải cùng Wi-Fi.");
+    console.log("  ℹ " + t("lan_mode"));
   }
 
-  // 4. Start the webview QR server.
+  // 5. The one payload the phone stores, built once and used for every route
+  // that hands it over: the terminal QR, the on-screen QR (data URL), and
+  // /api/connect. Building it in one place is deliberate — when the two QR
+  // codes were assembled separately they drifted, and the page QR pointed the
+  // phone at the gateway while the terminal QR pointed it at the bridge.
+  //
+  // It carries whichever endpoint actually serves chat: the bridge when it is
+  // running (so the phone can choose an agent), otherwise the gateway.
+  const chatUrl = bridgeUrl || publicUrl;
+  const connectPayload = {
+    v: 1,
+    baseUrl: chatUrl,
+    fallbackUrl: bridgeUrl ? `http://${lanIP()}:${cfg.port + 1}` : localUrl,
+    apiKey: cfg.apiKey,
+    profile,
+    model: cfg.model,
+    profiles,
+    // The agent ids the bridge can answer with, so the app can offer a picker
+    // without probing. Empty when the bridge is off; the app then falls back to
+    // the plain model field.
+    agents,
+    defaultAgent: args.agent || "",
+    lang: resolveLang(args.lang),
+  };
+
+  // 6. Start the webview QR server, handing it that same payload.
   const app = createServer({
+    payload: connectPayload,
     publicUrl,
     localUrl,
     apiKey: cfg.apiKey,
@@ -160,51 +267,42 @@ async function main() {
     profile,
     gatewayUrl: localUrl,
     webhookToken: args.webhookToken,
+    lang: resolveLang(args.lang),
+    agents,
   });
   const { url: webUrl, port: webPort } = await listen(app, args.port);
 
-  // 5. Present it.
-  banner([
-    "MỞ TRÊN ĐIỆN THOẠI",
-    "1. Cài & mở app Hermes Remote",
-    "2. Bấm “Quét QR” rồi quét mã dưới đây",
-    "3. App tự kết nối",
-  ]);
-  await printAsciiQR({
-    v: 1,
-    baseUrl: publicUrl,
-    fallbackUrl: localUrl,
-    apiKey: cfg.apiKey,
-    profile,
-    model: cfg.model,
-    profiles,
-  });
+  // 7. Present it.
+  banner([t("open_on_phone"), t("open_step1"), t("open_step2"), t("open_step3")]);
 
-  console.log("  Trang QR (webview): " + webUrl);
-  console.log("  Server công khai  : " + publicUrl);
-  console.log("  Server LAN        : " + localUrl);
-  console.log("  Model             : " + (cfg.model || "(mặc định)"));
+  await printAsciiQR(connectPayload);
+
+  console.log("  " + t("web_url", webUrl));
+  console.log("  " + t("server_public", publicUrl));
+  console.log("  " + t("server_lan", localUrl));
+  console.log("  " + t("model_label", cfg.model || t("model_default")));
 
   if (args.webhookToken) {
     banner([
-      "WEBHOOK CHO IFTTT / GOOGLE HOME",
+      t("webhook_title"),
       "POST " + webUrl + "/api/webhook/ask",
-      'Body JSON: {"token":"<token>","text":"câu hỏi"}',
-      "Thêm ?say=1 để nhận plain text (cho loa đọc).",
+      'Body JSON: {"token":"<token>","text":"..."}',
     ]);
-    console.log("  Webhook token     : " + args.webhookToken);
-    console.log("  Kiểm tra sống     : GET " + webUrl + "/api/webhook/ping");
+    console.log("  " + t("webhook_token_line", args.webhookToken));
+    console.log("  " + t("webhook_ping", webUrl + "/api/webhook/ping"));
   } else {
-    console.log("  Webhook           : tắt (thêm --webhook-token <t> để bật)");
+    console.log("  " + t("webhook_off"));
   }
 
-  console.log("\n  Nhấn Ctrl+C để dừng.\n");
+  console.log("\n  " + t("ctrl_c") + "\n");
 
   if (args.open) openBrowser(webUrl);
 
   const shutdown = () => {
-    console.log("\n  Đang đóng...");
     if (tunnelProc) try { tunnelProc.kill(); } catch (_) {}
+    if (bridgeProc) try { bridgeProc.kill(); } catch (_) {}
+    // The bridge runs in-process, so closing it is asynchronous.
+    if (bridgeHandle) { try { bridgeHandle.close(); } catch (_) {} }
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

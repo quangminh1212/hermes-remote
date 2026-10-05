@@ -13,6 +13,8 @@ const express = require("express");
 const QRCode = require("qrcode");
 const path = require("path");
 
+const { translator, resolveLang } = require("./i18n");
+
 /**
  * @param {object} opts
  * @param {string} opts.publicUrl  Public (tunnel) URL to the Hermes API, no trailing slash.
@@ -31,9 +33,13 @@ function createServer(opts) {
   const app = express();
   app.use(express.json());
 
-  // The exact payload the phone will store. baseUrl = public tunnel; the app
-  // also keeps the LAN url as a fallback it can switch to.
-  const connectPayload = {
+  // The exact payload the phone will store, produced by the CLI so the QR it
+  // prints in the terminal, the QR on the page, and /api/connect are the same
+  // object rather than three chances to disagree.
+  //
+  // `payload` is authoritative when supplied; the individual opts below are the
+  // fallback for callers that build a server directly (tests, embedders).
+  const connectPayload = opts.payload || {
     v: 1,
     baseUrl: opts.publicUrl,
     fallbackUrl: opts.localUrl,
@@ -41,6 +47,8 @@ function createServer(opts) {
     profile: opts.profile || "",
     model: opts.model || "",
     profiles: opts.profiles || [],
+    agents: opts.agents || [],
+    defaultAgent: opts.defaultAgent || "",
   };
 
   // Machine-readable JSON. Nice for debugging or an app that can't scan.
@@ -90,11 +98,13 @@ function createServer(opts) {
     }
 
     try {
-      const reply = await askGateway(fetchImpl, gatewayUrl, opts.apiKey, {
-        model: opts.model,
-        profile: opts.profile,
-        text,
-      });
+      const reply = await askGateway(
+        fetchImpl,
+        gatewayUrl,
+        opts.apiKey,
+        { model: opts.model, profile: opts.profile, text },
+        translator(resolveLang(opts.lang)),
+      );
       // ?say=1 returns plain text so a speaker can read it directly.
       if (req.query.say === "1") {
         return res.type("text/plain").send(reply);
@@ -105,9 +115,13 @@ function createServer(opts) {
     }
   });
 
-  // The human-facing page.
+  // The human-facing page. Rendered in the CLI's language so the person reading
+  // the console and the person reading the page see the same wording, and shows
+  // the agents the phone can pick from when the bridge is running.
   app.get("/", (_req, res) => {
-    res.type("html").send(renderPage(connectPayload));
+    res.type("html").send(
+      renderPage({ ...connectPayload, lang: opts.lang, agents: opts.agents }),
+    );
   });
 
   return app;
@@ -116,8 +130,11 @@ function createServer(opts) {
 /**
  * POST a single-turn prompt to the Hermes gateway and return the assistant text.
  * Non-streaming: IFTTT/Google Home want the whole answer at once.
+ *
+ * @param {Function} [t] translator; used for the "no reply" placeholder so a
+ *   device that reads the answer aloud does not switch language mid-sentence.
  */
-async function askGateway(fetchImpl, gatewayUrl, apiKey, { model, profile, text }) {
+async function askGateway(fetchImpl, gatewayUrl, apiKey, { model, profile, text }, t = (k) => k) {
   const profileSegment = profile ? `/p/${profile}` : "";
   const url = `${gatewayUrl}${profileSegment}/v1/chat/completions`;
   const resp = await fetchImpl(url, {
@@ -138,7 +155,7 @@ async function askGateway(fetchImpl, gatewayUrl, apiKey, { model, profile, text 
   }
   const json = await resp.json();
   const content = json?.choices?.[0]?.message?.content;
-  return typeof content === "string" && content.trim() ? content.trim() : "(Hermes không trả lời)";
+  return typeof content === "string" && content.trim() ? content.trim() : t("gw_empty_reply");
 }
 
 async function safeText(resp) {
