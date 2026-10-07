@@ -135,4 +135,15 @@
     <string name="quick_shutdown_title">Tắt máy</string>
     <string name="quick_shutdown_prompt">Hỏi tôi xác nhận rồi tắt máy tính sau 60 giây.</string>
     <string name="tts_link_word">liên kết</string>
+    <string name="gw_section_title">Máy tính của bạn</string>
+    <string name="gw_version">Hermes %1$s</string>
+    <string name="gw_status_ok">Bình thường</string>
+    <string name="gw_status_degraded">Cần chú ý</string>
+    <string name="gw_disk_low">Đĩa đã dùng %1$d%% — còn %2$.0f GB</string>
+    <string name="gw_platform_down">Chưa kết nối: %1$s</string>
+    <string name="gw_tools">%1$d khả năng</string>
+    <string name="gw_sessions">%1$d phiên trước</string>
+    <string name="gw_loading">Đang kiểm tra máy tính…</string>
+    <string name="gw_unavailable">Không đọc được trạng thái máy</string>
+    <string name="gw_refresh">Làm mới</string>
 </resources>

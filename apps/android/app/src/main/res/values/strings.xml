@@ -135,4 +135,15 @@
     <string name="quick_shutdown_title">Shut down</string>
     <string name="quick_shutdown_prompt">Ask me to confirm, then shut down the computer in 60 seconds.</string>
     <string name="tts_link_word">link</string>
+    <string name="gw_section_title">Your PC</string>
+    <string name="gw_version">Hermes %1$s</string>
+    <string name="gw_status_ok">Healthy</string>
+    <string name="gw_status_degraded">Needs attention</string>
+    <string name="gw_disk_low">Disk %1$d%% full — %2$.0f GB free</string>
+    <string name="gw_platform_down">Not connected: %1$s</string>
+    <string name="gw_tools">%1$d capabilities</string>
+    <string name="gw_sessions">%1$d past sessions</string>
+    <string name="gw_loading">Checking your PC…</string>
+    <string name="gw_unavailable">Could not read PC status</string>
+    <string name="gw_refresh">Refresh</string>
 </resources>
