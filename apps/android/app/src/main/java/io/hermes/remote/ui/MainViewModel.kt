@@ -59,6 +59,17 @@ data class ChatUiState(
 
     /** True while a gateway info fetch is in flight. */
     val gatewayLoading: Boolean = false,
+
+    /**
+     * True when the last fetch failed *and* there is nothing to show.
+     *
+     * Deliberately not "the last fetch failed": a failed refresh with a good
+     * snapshot already on screen keeps showing that snapshot, and the card must
+     * not put an error line above data it is still successfully displaying. This
+     * is only for the cold start, where the alternative to saying "could not
+     * read" is a blank space the user cannot tell apart from "nothing to report".
+     */
+    val gatewayFailed: Boolean = false,
 )
 
 /** Phase of a voice turn, used to drive the mic button + status text. */
@@ -263,16 +274,29 @@ class MainViewModel(
      * Best-effort by design: a failure leaves the last known info in place
      * rather than blanking the screen. Losing a health read must never look
      * like losing the connection, which [connected] already tracks.
+     *
+     * [ChatUiState.gatewayFailed] is set only when the failure leaves nothing to
+     * show, so a dropped refresh over good data stays silent while a failed cold
+     * start says so.
+     *
+     * The result is discarded if the config changed while the request was in
+     * flight. Switching PC nulls `gateway` so the old machine's health cannot be
+     * shown against the new one; without this check the late reply would write
+     * that old health straight back, which is the exact thing nulling it was
+     * meant to prevent.
      */
     fun refreshGatewayInfo() {
         val config = _state.value.config
         if (!config.isValid()) return
-        _state.value = _state.value.copy(gatewayLoading = true)
+        _state.value = _state.value.copy(gatewayLoading = true, gatewayFailed = false)
         viewModelScope.launch {
             val info = withContext(Dispatchers.IO) { gatewayApi.fetchInfo(config) }
-            _state.value = _state.value.copy(
-                gateway = info ?: _state.value.gateway,
+            val current = _state.value
+            if (current.config != config) return@launch
+            _state.value = current.copy(
+                gateway = info ?: current.gateway,
                 gatewayLoading = false,
+                gatewayFailed = info == null && current.gateway == null,
             )
         }
     }
@@ -450,7 +474,7 @@ class MainViewModel(
         configStore.save(config)
         // Drop the previous PC's info: it belongs to the old config, and
         // showing it against the new one would be actively misleading.
-        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null)
+        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null, gatewayFailed = false)
         refreshGatewayInfo()
     }
 
@@ -462,7 +486,7 @@ class MainViewModel(
     fun applyConnectPayload(payload: io.hermes.remote.model.ConnectPayload) {
         val config = payload.toServerConfig()
         configStore.save(config)
-        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null)
+        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null, gatewayFailed = false)
         testConnection(config)
         refreshGatewayInfo()
     }

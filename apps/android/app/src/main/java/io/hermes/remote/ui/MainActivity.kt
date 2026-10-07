@@ -94,6 +94,7 @@ import io.hermes.remote.model.ServerConfig
 import io.hermes.remote.ui.components.BrandLockup
 import io.hermes.remote.ui.components.BrandMark
 import io.hermes.remote.ui.components.GatewayStatusCard
+import io.hermes.remote.ui.components.gatewayVersionLine
 import io.hermes.remote.ui.components.Hairline
 import io.hermes.remote.ui.components.HermesIcons
 import io.hermes.remote.ui.components.InfoRow
@@ -400,6 +401,7 @@ private fun ChatScreen(
             voice = state.voice,
             gateway = state.gateway,
             gatewayLoading = state.gatewayLoading,
+            gatewayFailed = state.gatewayFailed,
             onDismiss = { showSettings = false },
             onSave = {
                 viewModel.saveConfig(it)
@@ -1131,6 +1133,7 @@ private fun SettingsSheet(
     voice: VoiceUiState,
     gateway: GatewayInfo?,
     gatewayLoading: Boolean,
+    gatewayFailed: Boolean,
     onDismiss: () -> Unit,
     onSave: (ServerConfig) -> Unit,
     onTest: (ServerConfig) -> Unit,
@@ -1210,6 +1213,10 @@ private fun SettingsSheet(
             // "is it healthy, and what is it doing".
             SectionHeader(
                 title = stringResource(R.string.gw_section_title),
+                // The version belongs here, not in the card: the header already
+                // prints the title, and the card repeating it would stack "Your
+                // PC" over "Your PC".
+                subtitle = gatewayVersionLine(gateway),
                 action = {
                     TextButton(onClick = onRefreshGateway) {
                         Text(
@@ -1223,6 +1230,7 @@ private fun SettingsSheet(
                 info = gateway,
                 loading = gatewayLoading,
                 onRefresh = onRefreshGateway,
+                failed = gatewayFailed,
             )
 
             // Agent choice sits above the raw connection fields: it is the

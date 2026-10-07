@@ -40,9 +40,6 @@ data class GatewayInfo(
      */
     val sessions: List<SessionSummary> = emptyList(),
 ) {
-    /** Nothing has been fetched yet. */
-    val isEmpty: Boolean get() = status.isBlank() && version.isBlank()
-
     /**
      * True when the PC answered `/health` but flagged a problem.
      *
