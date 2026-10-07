@@ -89,9 +89,11 @@ import io.hermes.remote.data.ConfigStore
 import io.hermes.remote.model.ChatMessage
 import io.hermes.remote.model.ConnectPayload
 import io.hermes.remote.model.DeliveryState
+import io.hermes.remote.model.GatewayInfo
 import io.hermes.remote.model.ServerConfig
 import io.hermes.remote.ui.components.BrandLockup
 import io.hermes.remote.ui.components.BrandMark
+import io.hermes.remote.ui.components.GatewayStatusCard
 import io.hermes.remote.ui.components.Hairline
 import io.hermes.remote.ui.components.HermesIcons
 import io.hermes.remote.ui.components.InfoRow
@@ -396,6 +398,8 @@ private fun ChatScreen(
             initial = state.config,
             hint = state.connectionHint,
             voice = state.voice,
+            gateway = state.gateway,
+            gatewayLoading = state.gatewayLoading,
             onDismiss = { showSettings = false },
             onSave = {
                 viewModel.saveConfig(it)
@@ -408,6 +412,7 @@ private fun ChatScreen(
                 startScan()
             },
             onToggleConversation = viewModel::setConversationMode,
+            onRefreshGateway = viewModel::refreshGatewayInfo,
             themeMode = themeMode,
             onThemeMode = viewModel::setThemeMode,
         )
@@ -1124,11 +1129,14 @@ private fun SettingsSheet(
     initial: ServerConfig,
     hint: String?,
     voice: VoiceUiState,
+    gateway: GatewayInfo?,
+    gatewayLoading: Boolean,
     onDismiss: () -> Unit,
     onSave: (ServerConfig) -> Unit,
     onTest: (ServerConfig) -> Unit,
     onScanQr: () -> Unit,
     onToggleConversation: (Boolean) -> Unit,
+    onRefreshGateway: () -> Unit,
     themeMode: ThemeMode,
     onThemeMode: (ThemeMode) -> Unit,
 ) {
@@ -1195,6 +1203,27 @@ private fun SettingsSheet(
                     )
                 }
             }
+
+            // What the PC reports about itself, straight from the gateway's own
+            // endpoints. Sits next to the connection fields because it answers
+            // the same question in more detail: not just "can I reach it" but
+            // "is it healthy, and what is it doing".
+            SectionHeader(
+                title = stringResource(R.string.gw_section_title),
+                action = {
+                    TextButton(onClick = onRefreshGateway) {
+                        Text(
+                            text = stringResource(R.string.gw_refresh),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                },
+            )
+            GatewayStatusCard(
+                info = gateway,
+                loading = gatewayLoading,
+                onRefresh = onRefreshGateway,
+            )
 
             // Agent choice sits above the raw connection fields: it is the
             // setting people actually change, while URL and key are set once

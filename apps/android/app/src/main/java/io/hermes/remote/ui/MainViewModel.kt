@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import io.hermes.remote.BuildConfig
 import io.hermes.remote.data.ChatApi
 import io.hermes.remote.data.ConfigStore
+import io.hermes.remote.data.GatewayApi
 import io.hermes.remote.data.StreamEvent
 import io.hermes.remote.model.ChatMessage
 import io.hermes.remote.model.DeliveryState
+import io.hermes.remote.model.GatewayInfo
 import io.hermes.remote.model.Role
 import io.hermes.remote.ui.theme.ThemeMode
 import io.hermes.remote.model.ServerConfig
@@ -45,6 +47,18 @@ data class ChatUiState(
      * breaks the moment the wording or translation changes.
      */
     val connected: Boolean = false,
+
+    /**
+     * What the PC says about itself: health, capabilities, past sessions.
+     *
+     * Null until the first successful fetch, which is different from "fetched
+     * and empty" — the UI uses that distinction to avoid claiming the PC has
+     * no sessions when it simply has not been asked yet.
+     */
+    val gateway: GatewayInfo? = null,
+
+    /** True while a gateway info fetch is in flight. */
+    val gatewayLoading: Boolean = false,
 )
 
 /** Phase of a voice turn, used to drive the mic button + status text. */
@@ -213,6 +227,7 @@ object DefaultStringProvider : StringProvider {
 class MainViewModel(
     private val configStore: ConfigStore,
     private val api: ChatApi = ChatApi(),
+    private val gatewayApi: GatewayApi = GatewayApi(),
     private val updateChecker: UpdateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
     private val updatePrefs: android.content.SharedPreferences? = null,
     private val voice: VoiceController = NoopVoiceController,
@@ -239,6 +254,27 @@ class MainViewModel(
      */
     init {
         testConnection(_state.value.config)
+        refreshGatewayInfo()
+    }
+
+    /**
+     * Ask the PC to describe itself and publish the answer.
+     *
+     * Best-effort by design: a failure leaves the last known info in place
+     * rather than blanking the screen. Losing a health read must never look
+     * like losing the connection, which [connected] already tracks.
+     */
+    fun refreshGatewayInfo() {
+        val config = _state.value.config
+        if (!config.isValid()) return
+        _state.value = _state.value.copy(gatewayLoading = true)
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) { gatewayApi.fetchInfo(config) }
+            _state.value = _state.value.copy(
+                gateway = info ?: _state.value.gateway,
+                gatewayLoading = false,
+            )
+        }
     }
 
     /**
@@ -412,7 +448,10 @@ class MainViewModel(
 
     fun saveConfig(config: ServerConfig) {
         configStore.save(config)
-        _state.value = _state.value.copy(config = config, connectionHint = null)
+        // Drop the previous PC's info: it belongs to the old config, and
+        // showing it against the new one would be actively misleading.
+        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null)
+        refreshGatewayInfo()
     }
 
     /**
@@ -423,8 +462,9 @@ class MainViewModel(
     fun applyConnectPayload(payload: io.hermes.remote.model.ConnectPayload) {
         val config = payload.toServerConfig()
         configStore.save(config)
-        _state.value = _state.value.copy(config = config, connectionHint = null)
+        _state.value = _state.value.copy(config = config, connectionHint = null, gateway = null)
         testConnection(config)
+        refreshGatewayInfo()
     }
 
     /** Probe the server by listing models and set a human-readable hint. */
@@ -795,12 +835,14 @@ class MainViewModel(
             updatePrefs: android.content.SharedPreferences? = null,
             voice: VoiceController = NoopVoiceController,
             strings: StringProvider = DefaultStringProvider,
+            gatewayApi: GatewayApi = GatewayApi(),
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
                     MainViewModel(
                         configStore = store,
+                        gatewayApi = gatewayApi,
                         updateChecker = UpdateChecker(BuildConfig.VERSION_CODE),
                         updatePrefs = updatePrefs,
                         voice = voice,
