@@ -1,12 +1,28 @@
 """
 Test script to verify Python relay server functionality
 Run this after starting the relay server
+
+This is a manual smoke script, not a unit test: it talks to a relay that must
+already be listening on :8765. pytest still collects it because of the `test_`
+filename, so the async entry point is skipped unless the server is up — see the
+guard inside, which turns the usual connection error into a skip rather than a
+failure that hides real regressions.
 """
 
 import asyncio
 import json
+import os
+import pytest
 from aiohttp import ClientSession
 
+# Empty the list to hide this module from pytest entirely.
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RELAY_LIVE") != "1",
+    reason="manual smoke script — needs a relay listening on :8765 (set RELAY_LIVE=1)",
+)
+
+
+@pytest.mark.asyncio
 async def test_relay_server():
     """Test basic server connectivity and tools registration"""
     

@@ -104,15 +104,96 @@ that last hop is verified by hand on a real phone.
 ## Tests
 
 ```bash
-# Android — 69 unit tests
+# Android — 103 unit tests (JVM only, no emulator)
 cd apps/android && ./gradlew testDebugUnitTest
 
-# Pairing CLI — 24 tests
+# Android lint (resources, manifest, locale parity)
+cd apps/android && ./gradlew lintDebug
+
+# Pairing CLI — 154 tests (7 skipped by default; see below)
 cd packages/pairing-cli && npm test
+
+# Same, with coverage thresholds enforced (80% lines/functions, 75% branches)
+cd packages/pairing-cli && npm run test:coverage
+
+# Static checks: parse errors, duplicate exports, unresolvable requires
+cd packages/pairing-cli && npm run lint
 
 # End-to-end Assistant hand-off (needs a device)
 node scripts/mock-assistant.js --all
 ```
+
+The policy — what each layer owns, why some tests skip, and what is deliberately
+not covered — is in **[docs/TESTING.md](docs/TESTING.md)**.
+
+### Why some tests are skipped by default
+
+The live cases in `quoting-e2e.test.js` spawn a real CLI, which costs tokens and
+takes tens of seconds. They are gated behind `CHAIN_E2E=1` because a test that
+fails when a model chooses different wording trains people to ignore failures.
+The deterministic assertions for the same behaviour live in the unit suites and
+always run.
+
+`tunnel.test.js` skips its process-lifecycle cases on Windows: `startTunnel`
+spawns its argument directly, and Windows cannot spawn a `.cmd` without a shell
+(Node raises `EINVAL`), nor build a spawnable stand-in without a compiler. The
+URL-extraction cases, which are the part that decides whether the tunnel came
+up, run on every platform.
+
+### Live probes
+
+These drive the real stack. Run them when changing anything that shells out.
+
+```bash
+cd packages/pairing-cli
+
+# Prompt round-trips: shell metacharacters, Unicode, blank input
+node test/probe-cli-edge.js hermes
+
+# The full HTTP chain: auth, /v1/models, SSE, errors, real answers
+node test/probe-bridge-live.js hermes
+
+# The three live-CLI tests inside the quoting suite
+CHAIN_E2E=1 node --test test/quoting-e2e.test.js
+
+# Bridge + pairing page WITHOUT the Hermes gateway.
+# Useful when you only touched the phone app: the gateway is a separate product
+# and refuses to start without provider keys in ~/.hermes/.env.
+node test/harness-bridge-only.js --port 8899 --agent hermes
+# then read the payload the phone would receive from the QR code:
+#   curl http://127.0.0.1:8899/api/connect
+```
+
+### Agent support
+
+The bridge serves exactly one agent: **`hermes`**, the Hermes gateway itself.
+Earlier versions also fanned out to `claude`, `codex`, `grok` and `opencode`.
+
+That was removed deliberately. Each spawned CLI brought its own flags, its own
+failure modes and its own quoting rules, on a phone where the user cannot see
+the child process or its stderr — surface area without a user. Adding one back
+is cheap if that changes: the adapter contract in `lib/agent-registry.js` is
+unchanged, and `routeAgents` in `bin/cli.js` already handles the case where a
+spawning adapter and a passthrough coexist.
+
+One consequence worth knowing: because `hermes` is a *passthrough*, the bridge
+cannot answer chat for it — it tells you to point at the gateway. So the CLI
+starts the bridge only when a spawning adapter exists. With only `hermes`
+installed, the QR points the phone straight at the gateway. Before that rule
+existed, the CLI advertised a bridge the phone's first message could not use.
+
+### Quoting on Windows
+
+A globally-installed npm CLI on Windows is a `.cmd` shim, which Node can only run
+with `shell: true` — and then cmd.exe gets to reinterpret the prompt. The
+registry therefore peels the shim to the real `.exe` behind it
+(`resolveShimTarget`) so the prompt is passed with no shell at all, and only
+falls back to `quoteForCmd` when that is not possible.
+
+This matters more than it looks: the previous `quoteForCmd` doubled every `%` and
+escaped every `!`, so a prompt of "100% done, 50! left" reached the model as
+"100%% done, 50^^! left". `test/quoting-e2e.test.js` pins both paths by running a
+prompt through a real shim and comparing the argv the child received.
 
 ## Design
 

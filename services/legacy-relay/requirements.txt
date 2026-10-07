@@ -5,3 +5,9 @@ opencv-python>=4.8.0
 pillow>=10.0.0
 pyautogui>=0.9.54
 asyncio-throttle>=1.0.2
+
+# Test-only. These were missing, which made `pytest` report "async def functions
+# are not natively supported" for 12 tests instead of running them — the suite
+# looked broken while the code underneath was fine.
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
