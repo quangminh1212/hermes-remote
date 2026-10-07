@@ -1,4 +1,13 @@
 node_modules/
-package-lock.json
 *.log
 .DS_Store
+
+# package-lock.json is deliberately NOT ignored.
+#
+# It was, and that broke CI: the workflow installs with `npm ci`, which
+# requires a lock file and refuses to run without one. On a fresh clone there
+# was none, so the job would have failed before reaching a single test.
+#
+# Committing it also pins the transitive tree, which is what makes an
+# `npx hermes-remote` install reproducible and turns an unexpected dependency
+# change into a reviewable diff.

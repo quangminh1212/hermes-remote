@@ -10,6 +10,14 @@ credentials.xml
 secret.properties
 secrets.yml
 
+# Android SharedPreferences dumps written while testing on a device.
+#
+# These carry a real `api_key`, because the app persists the pairing config —
+# so a file pushed to the phone and pulled back is a credential, not a fixture.
+# They were briefly present at the repo root; this is here so it cannot repeat.
+*prefs.xml
+hermes_bridge_config.xml
+
 # --- Node -------------------------------------------------------------------
 node_modules/
 npm-debug.log*
@@ -59,3 +67,22 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# A stray directory actually named `%TEMP%`, created when a script used the
+# literal string instead of the expanded path. Its parent is the real temp dir,
+# so ignoring it by name is the only way to keep it out.
+%TEMP%/
+
+# --- Scratch work -----------------------------------------------------------
+# Compiled Java and the `.java` files they came from, left at the repo root by
+# one-off QR-decoding experiments. Build output belongs in `build/`, not here.
+*.class
+/DecodeQr.java
+
+# --- Screenshots ------------------------------------------------------------
+# `ui-*.png` are device captures taken by hand while iterating on the layout;
+# `qr-pairing.png` is a scraped pairing QR. None are referenced by the app or a
+# test, and together they are megabytes of binary in a repo whose diffs are
+# meant to be reviewable. Kept local instead.
+ui-*.png
+/qr-pairing.png
