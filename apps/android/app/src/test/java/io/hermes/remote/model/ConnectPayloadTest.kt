@@ -34,6 +34,32 @@ class ConnectPayloadTest {
     }
 
     @Test
+    fun `the agent list survives the trip into ServerConfig`() {
+        // Regression: toServerConfig() used to drop agents/defaultAgent, so the
+        // payload was parsed with the agent list and the list was then thrown
+        // away — the picker had nothing to show and the user could never choose
+        // Codex or Grok.
+        val json =
+            """{"v":1,"baseUrl":"http://10.0.0.5:8643","apiKey":"k","profile":"","model":"claude","agents":["claude","codex","Anthropic"],"defaultAgent":"codex"}"""
+        val cfg = ConnectPayload.parse(json)!!.toServerConfig()
+        assertEquals(listOf("claude", "codex", "Anthropic"), cfg.agents)
+        assertEquals("codex", cfg.defaultAgent)
+        assertTrue(cfg.hasAgents)
+        assertEquals("claude", cfg.effectiveModel)
+    }
+
+    @Test
+    fun `a payload naming only a default agent uses it as the model`() {
+        // Older/simpler payloads may carry defaultAgent with an empty model.
+        val json =
+            """{"v":1,"baseUrl":"http://10.0.0.5:8643","apiKey":"k","profile":"","model":"","agents":["claude","codex"],"defaultAgent":"codex"}"""
+        val cfg = ConnectPayload.parse(json)!!.toServerConfig()
+        assertEquals("codex", cfg.model)
+        assertEquals("codex", cfg.effectiveModel)
+        assertFalse(cfg.modelWasRetargeted)
+    }
+
+    @Test
     fun `parses the agent list and default agent from the bridge payload`() {
         val json =
             """{"v":1,"baseUrl":"http://10.0.0.5:8643","fallbackUrl":"http://10.0.0.5:8643","apiKey":"k","profile":"","model":"claude","profiles":[],"agents":["claude","codex","Anthropic"],"defaultAgent":"codex"}"""

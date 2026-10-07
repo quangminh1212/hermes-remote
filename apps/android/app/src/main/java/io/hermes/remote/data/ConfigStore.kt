@@ -2,6 +2,7 @@ package io.hermes.remote.data
 
 import android.content.Context
 import io.hermes.remote.model.ServerConfig
+import io.hermes.remote.ui.theme.ThemeMode
 
 /** Persists [ServerConfig] in SharedPreferences. */
 class ConfigStore(context: Context) {
@@ -17,6 +18,13 @@ class ConfigStore(context: Context) {
             ?: ServerConfig.DEFAULT_PROFILE,
         model = prefs.getString(KEY_MODEL, ServerConfig.DEFAULT_MODEL)
             ?: ServerConfig.DEFAULT_MODEL,
+        // Stored comma-separated: agent ids are simple lower-case tokens with no
+        // commas, so a JSON dependency is not needed just for this list.
+        agents = prefs.getString(KEY_AGENTS, "").orEmpty()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() },
+        defaultAgent = prefs.getString(KEY_DEFAULT_AGENT, "").orEmpty(),
     )
 
     fun save(config: ServerConfig) {
@@ -25,17 +33,20 @@ class ConfigStore(context: Context) {
             .putString(KEY_KEY, config.apiKey)
             .putString(KEY_PROFILE, config.profile)
             .putString(KEY_MODEL, config.model)
+            .putString(KEY_AGENTS, config.agents.joinToString(","))
+            .putString(KEY_DEFAULT_AGENT, config.defaultAgent)
             .apply()
     }
 
-    // --- Voice assistant settings (kept alongside the server config) ---------
-
-    /** Whether the always-listening wake-word service should run. */
-    fun isVoiceAssistantEnabled(): Boolean = prefs.getBoolean(KEY_VOICE_ENABLED, false)
-
-    fun setVoiceAssistantEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_VOICE_ENABLED, enabled).apply()
+    /** Record only the agent list, leaving the rest of the config untouched. */
+    fun saveAgents(agents: List<String>, defaultAgent: String) {
+        prefs.edit()
+            .putString(KEY_AGENTS, agents.joinToString(","))
+            .putString(KEY_DEFAULT_AGENT, defaultAgent)
+            .apply()
     }
+
+    // --- Voice settings (kept alongside the server config) -------------------
 
     /** Whether assistant replies should be read aloud. */
     fun isSpeakRepliesEnabled(): Boolean = prefs.getBoolean(KEY_SPEAK_REPLIES, true)
@@ -44,11 +55,17 @@ class ConfigStore(context: Context) {
         prefs.edit().putBoolean(KEY_SPEAK_REPLIES, enabled).apply()
     }
 
-    /** Picovoice AccessKey for the "Hey Hermes" wake word (empty = disabled). */
-    fun loadPorcupineKey(): String = prefs.getString(KEY_PORCUPINE, "").orEmpty()
+    /**
+     * The colour mode the user picked.
+     *
+     * Stored by enum name so a future reordering of [ThemeMode] cannot silently
+     * change what an existing install means.
+     */
+    fun loadThemeMode(): ThemeMode =
+        ThemeMode.fromId(prefs.getString(KEY_THEME_MODE, null))
 
-    fun savePorcupineKey(key: String) {
-        prefs.edit().putString(KEY_PORCUPINE, key.trim()).apply()
+    fun saveThemeMode(mode: ThemeMode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
     }
 
     companion object {
@@ -57,8 +74,9 @@ class ConfigStore(context: Context) {
         private const val KEY_KEY = "api_key"
         private const val KEY_PROFILE = "profile"
         private const val KEY_MODEL = "model"
-        private const val KEY_VOICE_ENABLED = "voice_enabled"
+        private const val KEY_AGENTS = "agents"
+        private const val KEY_DEFAULT_AGENT = "default_agent"
         private const val KEY_SPEAK_REPLIES = "speak_replies"
-        private const val KEY_PORCUPINE = "porcupine_key"
+        private const val KEY_THEME_MODE = "theme_mode"
     }
 }

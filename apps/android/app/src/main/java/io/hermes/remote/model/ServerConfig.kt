@@ -1,12 +1,78 @@
 package io.hermes.remote.model
 
-/** Connection + identity settings the user configures on the settings sheet. */
+/**
+ * Connection + identity settings the user configures on the settings sheet.
+ *
+ * [model] doubles as the agent selector when talking to the agent bridge: the
+ * bridge routes on the `model` field of the request, so choosing "codex" there
+ * is what makes Codex answer. [agents] is the list the PC reported, kept so the
+ * picker can offer it without probing; it is empty when the bridge is off or
+ * when an older QR payload had no such field.
+ */
 data class ServerConfig(
     val baseUrl: String,
     val apiKey: String,
     val profile: String,
     val model: String,
+    /** Agent ids the PC's bridge can answer with; empty when unknown. */
+    val agents: List<String> = emptyList(),
+    /** The agent the PC picks when a request names none. */
+    val defaultAgent: String = "",
 ) {
+    /** True when the PC offered a choice of agent CLIs. */
+    val hasAgents: Boolean get() = agents.isNotEmpty()
+
+    /**
+     * The model value that will actually be sent.
+     *
+     * When the PC reported agents, the configured [model] is only valid if it
+     * names one of them — otherwise the bridge answers 404 `unknown agent`.
+     * A freshly-paired phone used to hit exactly that: the app's default model
+     * is the Hermes gateway's `Claude-Fable.3`, which is not an agent id, so the
+     * first message failed. Falling back to the PC's [defaultAgent], then to the
+     * first reported agent, keeps the request valid without user intervention.
+     *
+     * When no agents were reported (bridge off, or an older payload) the
+     * configured model is passed through untouched, because then it really is a
+     * gateway model name.
+     */
+    val effectiveModel: String
+        get() {
+            if (!hasAgents) return model
+            val wanted = model.trim().lowercase()
+            agents.firstOrNull { it.trim().lowercase() == wanted }?.let { return it }
+            defaultAgent.trim().takeIf { it.isNotEmpty() }?.let { d ->
+                agents.firstOrNull { it.trim().lowercase() == d.lowercase() }?.let { return it }
+            }
+            return agents.first()
+        }
+
+    /** True when [model] had to be redirected to a valid agent id. */
+    val modelWasRetargeted: Boolean
+        get() = hasAgents && effectiveModel.trim().lowercase() != model.trim().lowercase()
+
+    /**
+     * The pickable agent ids: [agents] narrowed to real, unique, non-blank ids,
+     * with the effective model first so the current selection is at the top.
+     *
+     * Empty when the PC reported no agents — the UI then shows no picker at all,
+     * rather than offering the gateway's model name as if it were a CLI.
+     *
+     * The payload comes from the PC and could repeat an id or send blanks; the
+     * picker must not show duplicate or empty rows. Ids are lower-cased because
+     * the bridge matches them case-insensitively.
+     */
+    val agentChoices: List<String>
+        get() {
+            if (!hasAgents) return emptyList()
+            val seen = LinkedHashSet<String>()
+            for (a in listOf(effectiveModel) + agents) {
+                val id = a.trim().lowercase()
+                if (id.isNotEmpty()) seen += id
+            }
+            return seen.toList()
+        }
+
     /** Normalized base URL ending without a trailing slash. */
     val cleanBaseUrl: String get() = baseUrl.trim().trimEnd('/')
 

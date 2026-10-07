@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   Tiếng Việt (values-vi).
 
@@ -13,42 +13,55 @@
     <string name="app_name">Hermes Remote</string>
 
     <!-- ==================== Trợ lý giọng nói ==================== -->
-    <string name="voice_notif_title">Trợ lý Hermes</string>
-    <string name="voice_notif_listening">Đang nghe \"Hey Hermes\"…</string>
-    <string name="voice_notif_unavailable">Chưa cấu hình wake word — bấm micro trong app để nói</string>
-    <string name="voice_notif_stop">Tắt</string>
-    <string name="voice_channel_name">Trợ lý giọng Hermes</string>
-    <string name="voice_channel_desc">Giữ micro luôn nghe từ khoá \"Hey Hermes\"</string>
 
     <!-- ==================== Thẻ báo từ Trợ lý Google ==================== -->
-    <string name="assistant_banner">🎤 Từ Trợ lý Google</string>
+    <string name="assistant_banner">Từ Trợ lý Google</string>
 
     <!-- ==================== Trạng thái giọng nói ==================== -->
-    <string name="voice_phase_listening">🎙 Đang nghe…</string>
-    <string name="voice_phase_thinking">⏳ Hermes đang xử lý…</string>
-    <string name="voice_phase_speaking">🔊 Đang đọc trả lời…</string>
-    <string name="voice_status_waiting">👂 Đang chờ \"Hey Hermes\"</string>
+    <string name="voice_phase_listening">Đang nghe…</string>
+    <string name="voice_phase_thinking">Hermes đang xử lý…</string>
+    <string name="voice_phase_speaking">Đang đọc trả lời…</string>
+    <string name="voice_status_conversation">Đối thoại đang bật — nói bất cứ lúc nào</string>
     <string name="voice_stop">Dừng</string>
+    <string name="voice_stop_speaking">Dừng đọc</string>
 
     <!-- ==================== Màn hình chat ==================== -->
     <string name="chat_clear">Xoá</string>
     <string name="chat_you">Bạn</string>
+    <string name="chat_error_label">Lỗi</string>
     <string name="chat_placeholder">Nhắn lệnh cho Hermes…</string>
     <string name="chat_send">Gửi</string>
     <string name="chat_empty_reply">Không có phản hồi từ server</string>
     <string name="chat_error_spoken">Xin lỗi, có lỗi xảy ra. %1$s</string>
     <string name="chat_error_no_answer">Xin lỗi, mình không có câu trả lời.</string>
+    <string name="chat_settings">Cài đặt</string>
+    <string name="chat_mic">Nói</string>
+    <string name="chat_mic_stop">Dừng nghe</string>
+
+    <!-- ==================== Chọn agent ==================== -->
+    <string name="agent_title">Agent</string>
+    <string name="agent_hint">CLI nào trên máy bạn sẽ trả lời</string>
+    <string name="agent_none">Chưa thấy CLI nào — đang hỏi gateway Hermes</string>
+    <string name="agent_retargeted">\"%1$s\" không phải agent trên máy bạn; đang dùng \"%2$s\"</string>
 
     <!-- ==================== Kết nối / thiết lập ==================== -->
     <string name="setup_title">Cài đặt kết nối</string>
-    <string name="setup_scan_qr">📷 Quét QR từ máy tính</string>
+    <string name="setup_scan_qr">Quét QR từ máy tính</string>
     <string name="setup_scan_qr_button">Quét QR</string>
     <string name="setup_hint">Chạy `npx hermes-remote` trên máy tính,\nrồi quét mã QR trên trang mở ra để kết nối.</string>
     <string name="setup_profile_label">Profile (để trống = dùng key .env; hoặc dalek / doraemon / heimeringer)</string>
     <string name="setup_save">Lưu</string>
-    <string name="setup_saved_access_key">Đã lưu AccessKey</string>
-    <string name="setup_save_access_key">Lưu AccessKey</string>
     <string name="setup_test">Kiểm tra</string>
+    <string name="setup_server_url_label">Server URL (vd: https://abc.trycloudflare.com)</string>
+    <string name="setup_api_key_label">API key (API_SERVER_KEY)</string>
+    <string name="setup_model_label">Model / agent</string>
+    <string name="settings_theme_title">Giao diện</string>
+    <string name="settings_theme_system">Theo máy</string>
+    <string name="settings_theme_dark">Tối</string>
+    <string name="settings_theme_light">Sáng</string>
+    <string name="setup_advanced">Nâng cao</string>
+    <string name="setup_show_advanced">Hiện</string>
+    <string name="setup_hide_advanced">Ẩn</string>
 
     <!-- ==================== Màn hình quét QR ==================== -->
     <string name="qr_screen_title">Quét QR để kết nối</string>
@@ -60,10 +73,9 @@
 
     <!-- ==================== Cài đặt giọng nói ==================== -->
     <string name="settings_voice_title">Trợ lý giọng nói</string>
-    <string name="settings_voice_on">Đang bật — nói \"Hey Hermes\" để ra lệnh</string>
-    <string name="settings_voice_off">Đang tắt — bấm micro trong app để nói</string>
-    <string name="settings_wakeword_missing">Chưa cấu hình wake word — dùng nút micro</string>
-    <string name="settings_access_key_label">Picovoice AccessKey (cho \"Hey Hermes\", để trống = tắt)</string>
+    <!-- Đối thoại liên tục: micro tự mở lại sau mỗi câu trả lời. -->
+    <string name="settings_conversation">Đối thoại liên tục</string>
+    <string name="settings_conversation_hint">Nói qua lại không cần bấm. Tắt để dừng nghe.</string>
 
     <!-- ==================== Trợ giúp Trợ lý Google ==================== -->
     <string name="assistant_help_title">Dùng với Trợ lý Google</string>
@@ -86,6 +98,11 @@
     <string name="conn_missing_config">Thiếu URL hoặc API key</string>
     <string name="conn_ok">Kết nối OK — %1$d model: %2$s</string>
     <string name="conn_failed">Không kết nối được (kiểm tra URL, key, server đang chạy)</string>
+    <string name="conn_offline">Chưa kết nối</string>
+    <string name="conn_ready">Đã kết nối</string>
+    <string name="conn_agents_label">Các agent</string>
+    <string name="conn_profile_label">Profile</string>
+    <string name="conn_model_label">Agent</string>
 
     <!-- ==================== Lỗi giọng nói ==================== -->
     <string name="voice_err_not_heard">Không nghe rõ, bạn thử lại nhé.</string>
@@ -99,7 +116,6 @@
     <string name="voice_err_speech_timeout">Không nghe thấy gì. Thử lại nhé.</string>
     <string name="voice_err_unknown">Không nhận dạng được giọng nói. Thử lại nhé.</string>
     <string name="voice_err_no_recognizer">Thiết bị không có trình nhận dạng giọng nói</string>
-    <string name="voice_wakeword_not_set">Chưa cấu hình wake word — bấm micro để nói</string>
 
     <!-- ==================== Lỗi mạng ==================== -->
     <string name="net_no_config">Chưa cấu hình URL hoặc API key</string>

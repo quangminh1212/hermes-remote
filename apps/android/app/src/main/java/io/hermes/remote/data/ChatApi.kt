@@ -163,7 +163,9 @@ class ChatApi(
             }
 
         val root = JsonObject()
-        root.addProperty("model", config.model.ifBlank { ServerConfig.DEFAULT_MODEL })
+        // effectiveModel, not model: when the server reported agents, a model
+        // id that is not one of them is rejected with 404 by the bridge.
+        root.addProperty("model", config.effectiveModel.ifBlank { ServerConfig.DEFAULT_MODEL })
         root.add("messages", messages)
         root.addProperty("stream", true)
         return root.toString()

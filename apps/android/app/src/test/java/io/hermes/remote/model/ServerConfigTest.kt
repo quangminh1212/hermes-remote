@@ -106,4 +106,121 @@ class ServerConfigTest {
         assertFalse(ServerConfig("https://x", "", "p", "m").isValid())
         assertTrue(ServerConfig("https://x", "k", "p", "m").isValid())
     }
+
+    // --- Agent selection ---------------------------------------------------
+    //
+    // The bridge routes on the request's `model` field, so a model that is not
+    // one of the reported agents is rejected with 404. These pin the fallback
+    // that stops a freshly-paired phone failing on its first message.
+
+    private fun withAgents(model: String, defaultAgent: String = "") = ServerConfig(
+        baseUrl = "http://10.0.0.5:8643",
+        apiKey = "k",
+        profile = "",
+        model = model,
+        agents = listOf("claude", "codex", "grok", "opencode"),
+        defaultAgent = defaultAgent,
+    )
+
+    @Test
+    fun `a gateway model name is retargeted when agents are reported`() {
+        // This is the exact bug: DEFAULT_MODEL is a gateway model, not an agent.
+        val config = withAgents(ServerConfig.DEFAULT_MODEL, defaultAgent = "claude")
+        assertEquals("claude", config.effectiveModel)
+        assertTrue(config.modelWasRetargeted)
+    }
+
+    @Test
+    fun `a valid agent id is used as-is`() {
+        val config = withAgents("codex")
+        assertEquals("codex", config.effectiveModel)
+        assertFalse(config.modelWasRetargeted)
+    }
+
+    @Test
+    fun `agent matching ignores case and surrounding space`() {
+        assertEquals("codex", withAgents("  CoDeX  ").effectiveModel)
+    }
+
+    @Test
+    fun `without a default agent the first reported agent is chosen`() {
+        assertEquals("claude", withAgents(ServerConfig.DEFAULT_MODEL).effectiveModel)
+    }
+
+    @Test
+    fun `an unusable default agent is skipped`() {
+        // defaultAgent naming something absent must not be sent.
+        val config = withAgents(ServerConfig.DEFAULT_MODEL, defaultAgent = "not-installed")
+        assertEquals("claude", config.effectiveModel)
+    }
+
+    @Test
+    fun `a default agent naming a real agent is preferred`() {
+        val config = withAgents(ServerConfig.DEFAULT_MODEL, defaultAgent = "grok")
+        assertEquals("grok", config.effectiveModel)
+    }
+
+    @Test
+    fun `with no agents reported the model passes through untouched`() {
+        // Bridge off: the model really is a gateway model name, so keep it.
+        val config = ServerConfig("http://x", "k", "", "Claude-Fable.3")
+        assertFalse(config.hasAgents)
+        assertEquals("Claude-Fable.3", config.effectiveModel)
+        assertFalse(config.modelWasRetargeted)
+    }
+
+    @Test
+    fun `agentChoices puts the effective model first and removes duplicates`() {
+        val config = withAgents("codex")
+        assertEquals(listOf("codex", "claude", "grok", "opencode"), config.agentChoices)
+    }
+
+    @Test
+    fun `agentChoices ignores blanks and duplicates from the wire`() {
+        val config = ServerConfig(
+            baseUrl = "http://x", apiKey = "k", profile = "", model = "claude",
+            agents = listOf("claude", "", "  ", "CLAUDE", "codex"),
+        )
+        assertEquals(listOf("claude", "codex"), config.agentChoices)
+    }
+
+    @Test
+    fun `agentChoices is empty when no agents are reported`() {
+        val config = ServerConfig("http://x", "k", "", "Claude-Fable.3")
+        assertTrue(config.agentChoices.isEmpty())
+    }
+
+    @Test
+    fun `a single reported agent is not treated as a choice`() {
+        // The bridge now ships exactly one agent, so this is the common case.
+        // The UI hides the picker at or below one option, which is why the
+        // boundary is asserted here rather than only in the composable.
+        val config = ServerConfig(
+            baseUrl = "http://x", apiKey = "k", profile = "", model = "hermes",
+            agents = listOf("hermes"),
+        )
+        assertEquals(listOf("hermes"), config.agentChoices)
+        assertTrue(
+            "one agent must not be presented as a picker",
+            config.agentChoices.size <= 1,
+        )
+    }
+
+    @Test
+    fun `a stale default model still resolves to the one surviving agent`() {
+        // A phone paired before the CLI removal has model = a gateway name or a
+        // removed CLI id. The first message must not 404.
+        for (stale in listOf("Claude-Fable.3", "claude", "grok", "glm-5.3")) {
+            val config = ServerConfig(
+                baseUrl = "http://x", apiKey = "k", profile = "", model = stale,
+                agents = listOf("hermes"), defaultAgent = "",
+            )
+            assertEquals(
+                "model $stale should retarget to hermes",
+                "hermes",
+                config.effectiveModel,
+            )
+            assertTrue(config.modelWasRetargeted)
+        }
+    }
 }

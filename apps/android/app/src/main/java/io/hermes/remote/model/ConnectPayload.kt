@@ -41,12 +41,26 @@ data class ConnectPayload(
     /** True when this payload has the minimum needed to connect. */
     fun isUsable(): Boolean = baseUrl.isNotBlank() && apiKey.isNotBlank()
 
-    /** Fold this payload into a ServerConfig. */
+    /**
+     * Fold this payload into a ServerConfig.
+     *
+     * [agents] and [defaultAgent] must travel with the rest: they are what lets
+     * the app offer an agent picker. Dropping them here was a real bug — the
+     * payload was parsed with the agent list and the list was then discarded, so
+     * the phone could only ever send the plain Hermes model and the user had no
+     * way to reach Codex or Grok.
+     *
+     * When the PC named a default agent and the payload carries no model, the
+     * default becomes the model, so the first request already goes to the right
+     * CLI instead of falling through to the gateway's own model.
+     */
     fun toServerConfig(): ServerConfig = ServerConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         profile = profile,
-        model = model
+        model = model.ifBlank { defaultAgent },
+        agents = agents,
+        defaultAgent = defaultAgent,
     )
 
     companion object {

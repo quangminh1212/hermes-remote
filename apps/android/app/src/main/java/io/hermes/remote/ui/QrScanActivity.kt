@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.zxing.integration.android.IntentIntegrator
 import io.hermes.remote.R
+import io.hermes.remote.data.ConfigStore
 import io.hermes.remote.ui.theme.XLabTheme
 import androidx.compose.ui.res.stringResource
 
@@ -35,7 +37,13 @@ class QrScanActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            XLabTheme {
+            // Honour the saved mode rather than defaulting to dark: the scan
+            // screen is reached from the settings sheet, so it is the one place
+            // a light-mode user would notice the app disagreeing with itself.
+            val dark = ConfigStore(this)
+                .loadThemeMode()
+                .resolveDark(isSystemInDarkTheme())
+            XLabTheme(dark = dark) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ScannerPrompt(
                         onScan = { startScan() },

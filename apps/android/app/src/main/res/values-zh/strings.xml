@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   简体中文 (values-zh).
 
@@ -12,42 +12,55 @@
     <string name="app_name">Hermes Remote</string>
 
     <!-- ==================== 语音助手 ==================== -->
-    <string name="voice_notif_title">Hermes 助手</string>
-    <string name="voice_notif_listening">正在监听 \"Hey Hermes\"…</string>
-    <string name="voice_notif_unavailable">未配置唤醒词 — 请点应用内的麦克风说话</string>
-    <string name="voice_notif_stop">停止</string>
-    <string name="voice_channel_name">Hermes 语音助手</string>
-    <string name="voice_channel_desc">保持麦克风开启以监听 \"Hey Hermes\" 唤醒词</string>
 
     <!-- ==================== Google 助理转交提示条 ==================== -->
-    <string name="assistant_banner">🎤 来自 Google 助理</string>
+    <string name="assistant_banner">来自 Google 助理</string>
 
     <!-- ==================== 语音状态 ==================== -->
-    <string name="voice_phase_listening">🎙 正在聆听…</string>
-    <string name="voice_phase_thinking">⏳ Hermes 正在处理…</string>
-    <string name="voice_phase_speaking">🔊 正在朗读回复…</string>
-    <string name="voice_status_waiting">👂 正在等待 \"Hey Hermes\"</string>
+    <string name="voice_phase_listening">正在聆听…</string>
+    <string name="voice_phase_thinking">Hermes 正在处理…</string>
+    <string name="voice_phase_speaking">正在朗读回复…</string>
+    <string name="voice_status_conversation">连续对话已开启 — 随时说话</string>
     <string name="voice_stop">停止</string>
+    <string name="voice_stop_speaking">停止朗读</string>
 
     <!-- ==================== 聊天界面 ==================== -->
     <string name="chat_clear">清空</string>
     <string name="chat_you">你</string>
+    <string name="chat_error_label">失败</string>
     <string name="chat_placeholder">给 Hermes 发指令…</string>
     <string name="chat_send">发送</string>
     <string name="chat_empty_reply">服务器没有返回内容</string>
     <string name="chat_error_spoken">抱歉，出错了。%1$s</string>
     <string name="chat_error_no_answer">抱歉，我没有答案。</string>
+    <string name="chat_settings">设置</string>
+    <string name="chat_mic">说话</string>
+    <string name="chat_mic_stop">停止聆听</string>
+
+    <!-- ==================== Agent 选择 ==================== -->
+    <string name="agent_title">Agent</string>
+    <string name="agent_hint">由电脑上的哪个 CLI 来回答</string>
+    <string name="agent_none">未检测到 CLI — 正在询问 Hermes 网关</string>
+    <string name="agent_retargeted">\"%1$s\" 不是电脑上的 agent；改用 \"%2$s\"</string>
 
     <!-- ==================== 连接 / 设置 ==================== -->
     <string name="setup_title">连接设置</string>
-    <string name="setup_scan_qr">📷 扫描电脑上的二维码</string>
+    <string name="setup_scan_qr">扫描电脑上的二维码</string>
     <string name="setup_scan_qr_button">扫描二维码</string>
     <string name="setup_hint">在电脑上运行 `npx hermes-remote`，\n然后扫描打开页面上的二维码。</string>
     <string name="setup_profile_label">Profile（留空 = 使用 .env 的密钥；或 dalek / doraemon / heimeringer）</string>
     <string name="setup_save">保存</string>
-    <string name="setup_saved_access_key">AccessKey 已保存</string>
-    <string name="setup_save_access_key">保存 AccessKey</string>
     <string name="setup_test">测试</string>
+    <string name="setup_server_url_label">服务器 URL（例如 https://abc.trycloudflare.com）</string>
+    <string name="setup_api_key_label">API 密钥（API_SERVER_KEY）</string>
+    <string name="setup_model_label">模型 / agent</string>
+    <string name="settings_theme_title">外观</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="setup_advanced">高级</string>
+    <string name="setup_show_advanced">展开</string>
+    <string name="setup_hide_advanced">收起</string>
 
     <!-- ==================== 扫码界面 ==================== -->
     <string name="qr_screen_title">扫描二维码以连接</string>
@@ -59,10 +72,9 @@
 
     <!-- ==================== 语音设置 ==================== -->
     <string name="settings_voice_title">语音助手</string>
-    <string name="settings_voice_on">已开启 — 说 \"Hey Hermes\" 下达指令</string>
-    <string name="settings_voice_off">已关闭 — 点应用内的麦克风说话</string>
-    <string name="settings_wakeword_missing">未配置唤醒词 — 请使用麦克风按钮</string>
-    <string name="settings_access_key_label">Picovoice AccessKey（用于 \"Hey Hermes\"，留空 = 关闭）</string>
+    <!-- 连续对话：每次回答后自动重新打开麦克风。 -->
+    <string name="settings_conversation">连续对话</string>
+    <string name="settings_conversation_hint">无需点击即可来回交谈。关闭以停止聆听。</string>
 
     <!-- ==================== Google 助理帮助 ==================== -->
     <string name="assistant_help_title">配合 Google 助理使用</string>
@@ -85,6 +97,11 @@
     <string name="conn_missing_config">缺少 URL 或 API 密钥</string>
     <string name="conn_ok">连接成功 — %1$d 个模型：%2$s</string>
     <string name="conn_failed">无法连接（请检查 URL、密钥，以及服务器是否在运行）</string>
+    <string name="conn_offline">未连接</string>
+    <string name="conn_ready">已连接</string>
+    <string name="conn_agents_label">可用 Agent</string>
+    <string name="conn_profile_label">Profile</string>
+    <string name="conn_model_label">Agent</string>
 
     <!-- ==================== 语音错误 ==================== -->
     <string name="voice_err_not_heard">没听清，请再说一次。</string>
@@ -98,7 +115,6 @@
     <string name="voice_err_speech_timeout">没有听到声音。请重试。</string>
     <string name="voice_err_unknown">无法识别语音。请重试。</string>
     <string name="voice_err_no_recognizer">此设备没有语音识别器</string>
-    <string name="voice_wakeword_not_set">未配置唤醒词 — 点麦克风说话</string>
 
     <!-- ==================== 网络错误 ==================== -->
     <string name="net_no_config">未配置 URL 或 API 密钥</string>

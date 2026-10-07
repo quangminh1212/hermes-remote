@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   Default strings — English.
 
@@ -13,42 +13,55 @@
     <string name="app_name">Hermes Remote</string>
 
     <!-- ==================== Voice assistant ==================== -->
-    <string name="voice_notif_title">Hermes assistant</string>
-    <string name="voice_notif_listening">Listening for \"Hey Hermes\"…</string>
-    <string name="voice_notif_unavailable">Wake word not configured — tap the mic in the app to talk</string>
-    <string name="voice_notif_stop">Stop</string>
-    <string name="voice_channel_name">Hermes voice assistant</string>
-    <string name="voice_channel_desc">Keeps the microphone open for the \"Hey Hermes\" wake word</string>
 
     <!-- ==================== Assistant hand-off banner ==================== -->
-    <string name="assistant_banner">🎤 From Google Assistant</string>
+    <string name="assistant_banner">From Google Assistant</string>
 
     <!-- ==================== Voice status / phases ==================== -->
-    <string name="voice_phase_listening">🎙 Listening…</string>
-    <string name="voice_phase_thinking">⏳ Hermes is working…</string>
-    <string name="voice_phase_speaking">🔊 Reading the reply…</string>
-    <string name="voice_status_waiting">👂 Waiting for \"Hey Hermes\"</string>
+    <string name="voice_phase_listening">Listening…</string>
+    <string name="voice_phase_thinking">Hermes is working…</string>
+    <string name="voice_phase_speaking">Reading the reply…</string>
+    <string name="voice_status_conversation">Conversation on — speak any time</string>
     <string name="voice_stop">Stop</string>
+    <string name="voice_stop_speaking">Stop reading</string>
 
     <!-- ==================== Chat screen ==================== -->
     <string name="chat_clear">Clear</string>
     <string name="chat_you">You</string>
+    <string name="chat_error_label">Failed</string>
     <string name="chat_placeholder">Message Hermes…</string>
     <string name="chat_send">Send</string>
     <string name="chat_empty_reply">No reply from the server</string>
     <string name="chat_error_spoken">Sorry, something went wrong. %1$s</string>
     <string name="chat_error_no_answer">Sorry, I don\'t have an answer.</string>
+    <string name="chat_settings">Settings</string>
+    <string name="chat_mic">Talk</string>
+    <string name="chat_mic_stop">Stop listening</string>
+
+    <!-- ==================== Agent picker ==================== -->
+    <string name="agent_title">Agent</string>
+    <string name="agent_hint">Which CLI on your PC answers</string>
+    <string name="agent_none">No agent CLI reported — asking the Hermes gateway</string>
+    <string name="agent_retargeted">\"%1$s\" is not an agent on your PC; using \"%2$s\"</string>
 
     <!-- ==================== Pairing / setup ==================== -->
     <string name="setup_title">Connection settings</string>
-    <string name="setup_scan_qr">📷 Scan QR from the PC</string>
+    <string name="setup_scan_qr">Scan QR from the PC</string>
     <string name="setup_scan_qr_button">Scan QR</string>
     <string name="setup_hint">Run `npx hermes-remote` on your computer,\nthen scan the QR code on the page it opens.</string>
     <string name="setup_profile_label">Profile (empty = use the .env key; or dalek / doraemon / heimeringer)</string>
     <string name="setup_save">Save</string>
-    <string name="setup_saved_access_key">AccessKey saved</string>
-    <string name="setup_save_access_key">Save AccessKey</string>
     <string name="setup_test">Test</string>
+    <string name="setup_server_url_label">Server URL (e.g. https://abc.trycloudflare.com)</string>
+    <string name="setup_api_key_label">API key (API_SERVER_KEY)</string>
+    <string name="setup_model_label">Model / agent</string>
+    <string name="settings_theme_title">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="setup_advanced">Advanced</string>
+    <string name="setup_show_advanced">Show</string>
+    <string name="setup_hide_advanced">Hide</string>
 
     <!-- ==================== QR scanner screen ==================== -->
     <string name="qr_screen_title">Scan QR to connect</string>
@@ -60,10 +73,9 @@
 
     <!-- ==================== Voice settings ==================== -->
     <string name="settings_voice_title">Voice assistant</string>
-    <string name="settings_voice_on">On — say \"Hey Hermes\" to give a command</string>
-    <string name="settings_voice_off">Off — tap the mic in the app to talk</string>
-    <string name="settings_wakeword_missing">Wake word not configured — use the mic button</string>
-    <string name="settings_access_key_label">Picovoice AccessKey (for \"Hey Hermes\", empty = off)</string>
+    <!-- Continuous conversation: the mic reopens after each spoken reply. -->
+    <string name="settings_conversation">Continuous conversation</string>
+    <string name="settings_conversation_hint">Talk back and forth without tapping. Turn off to stop listening.</string>
 
     <!-- ==================== Google Assistant help ==================== -->
     <string name="assistant_help_title">Use with Google Assistant</string>
@@ -86,6 +98,11 @@
     <string name="conn_missing_config">Missing URL or API key</string>
     <string name="conn_ok">Connected — %1$d models: %2$s</string>
     <string name="conn_failed">Could not connect (check the URL, key, and that the server is running)</string>
+    <string name="conn_offline">Not connected</string>
+    <string name="conn_ready">Connected</string>
+    <string name="conn_agents_label">Agents</string>
+    <string name="conn_profile_label">Profile</string>
+    <string name="conn_model_label">Agent</string>
 
     <!-- ==================== Voice errors ==================== -->
     <string name="voice_err_not_heard">I didn\'t catch that, please try again.</string>
@@ -99,7 +116,6 @@
     <string name="voice_err_speech_timeout">I didn\'t hear anything. Please try again.</string>
     <string name="voice_err_unknown">Could not recognize speech. Please try again.</string>
     <string name="voice_err_no_recognizer">This device has no speech recognizer</string>
-    <string name="voice_wakeword_not_set">Wake word not configured — tap the mic to talk</string>
 
     <!-- ==================== Network errors ==================== -->
     <string name="net_no_config">URL or API key not configured</string>
