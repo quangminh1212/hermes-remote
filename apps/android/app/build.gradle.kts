@@ -115,11 +115,11 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Voice assistant: wake word ("Hey Hermes"). Optional at runtime — if the
-    // Porcupine AccessKey / keyword file is missing the app falls back to
-    // tap-to-talk instead of crashing. STT/TTS use the Android system APIs.
-    implementation("ai.picovoice:porcupine-android:3.0.2")
-    implementation("androidx.lifecycle:lifecycle-service:2.6.2")
+    // Voice: speech-to-text and text-to-speech both use the Android system
+    // APIs (SpeechRecognizer / TextToSpeech), so no third-party voice SDK is
+    // needed. Wake-word detection was removed on purpose: it required a
+    // Picovoice key and a background microphone, and the in-app continuous
+    // conversation mode covers the same need without either.
 
     // Testing
     testImplementation("junit:junit:4.13.2")

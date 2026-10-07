@@ -38,18 +38,14 @@ class VoiceStateTest {
     /** A scripted [VoiceController] for assertions. */
     private class FakeVoice(
         private var micAvailable: Boolean = true,
-        private var assistantEnabled: Boolean = false,
         private var speakReplies: Boolean = true,
-        private var wakeActive: Boolean = false,
     ) : VoiceController {
         var lastSpoken: String? = null
         var stopped = false
         var startListeningCalls = 0
 
         override fun isMicAvailable() = micAvailable
-        override fun isAssistantEnabled() = assistantEnabled
         override fun isSpeakRepliesEnabled() = speakReplies
-        override fun isWakeWordActive() = wakeActive
 
         override fun startListening(
             onPartial: (String) -> Unit,
@@ -69,20 +65,8 @@ class VoiceStateTest {
 
         override fun stopSpeaking() = Unit
 
-        override fun setAssistantEnabled(enabled: Boolean): Boolean {
-            assistantEnabled = enabled
-            return enabled
-        }
-    }
-
-    @Test
-    fun enableAssistantReflectsInController() {
-        val v = FakeVoice()
-        assertFalse(v.isAssistantEnabled())
-        assertTrue(v.setAssistantEnabled(true))
-        assertTrue(v.isAssistantEnabled())
-        assertFalse(v.setAssistantEnabled(false))
-        assertFalse(v.isAssistantEnabled())
+        /** Continuous conversation: the ViewModel pushes completion here. */
+        override fun onSpeakFinished() = Unit
     }
 
     @Test
@@ -108,18 +92,25 @@ class VoiceStateTest {
     @Test
     fun voicePhaseStartsIdle() {
         assertEquals(VoicePhase.IDLE, VoiceUiState().phase)
-        assertFalse(VoiceUiState().enabled)
         assertTrue(VoiceUiState().micAvailable)
+    }
+
+    @Test
+    fun conversationModeDefaultsOff() {
+        // Continuous conversation must default OFF: it opens the microphone
+        // without the user asking, so it can never be on by surprise.
+        assertFalse(VoiceUiState().conversationMode)
+        assertTrue(VoiceUiState(conversationMode = true).conversationMode)
     }
 
     @Test
     fun noopControllerIsInert() {
         assertFalse(NoopVoiceController.isMicAvailable())
-        assertFalse(NoopVoiceController.isAssistantEnabled())
-        assertFalse(NoopVoiceController.setAssistantEnabled(true))
+        assertFalse(NoopVoiceController.isSpeakRepliesEnabled())
         // Must not throw.
         NoopVoiceController.startListening({}, {}, {})
         NoopVoiceController.speak("x")
         NoopVoiceController.stopListening()
+        NoopVoiceController.onSpeakFinished()
     }
 }

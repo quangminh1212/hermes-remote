@@ -49,7 +49,5 @@ class AndroidStringProvider(private val context: Context) : StringProvider {
 
     override fun noRecognizer() = context.getString(R.string.voice_err_no_recognizer)
 
-    override fun wakeWordNotSet() = context.getString(R.string.voice_wakeword_not_set)
-
     override fun chatApiMessages() = ChatApi.Messages.from(context)
 }

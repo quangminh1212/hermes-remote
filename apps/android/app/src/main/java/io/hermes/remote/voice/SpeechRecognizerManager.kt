@@ -2,6 +2,7 @@ package io.hermes.remote.voice
 
 import io.hermes.remote.R
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -69,7 +70,17 @@ class SpeechRecognizerManager(private val context: Context) {
         }
 
         listening = true
-        recognizer?.startListening(intent)
+        // Never let a misbehaving recognizer take the process down. A device
+        // whose default recognition service is unexported throws
+        // SecurityException right here; the user should see an error message,
+        // not a crash that kills the whole app.
+        try {
+            recognizer?.startListening(intent)
+        } catch (e: Exception) {
+            listening = false
+            listener?.onError(context.getString(R.string.voice_err_unknown))
+            listener?.onEnded()
+        }
     }
 
     /** Stop listening; any pending result is still delivered. */
@@ -95,12 +106,34 @@ class SpeechRecognizerManager(private val context: Context) {
         listener = null
     }
 
+    /**
+     * Build the platform recognizer, preferring a known-good implementation.
+     *
+     * The bare `createSpeechRecognizer(context)` follows the device's *default*
+     * recognition service, which any app can claim. On the test Note 8 a
+     * third-party screenshot app had claimed it, and its service is not
+     * exported — so `startListening` threw a SecurityException and killed the
+     * process. Naming Google's recognizer explicitly sidesteps that, and
+     * falling back to the default keeps working on devices that have no Google
+     * recognizer at all.
+     */
     private fun ensureRecognizer() {
-        if (recognizer == null) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                setRecognitionListener(platformListener)
+        if (recognizer != null) return
+        recognizer = createPreferredRecognizer().apply {
+            setRecognitionListener(platformListener)
+        }
+    }
+
+    /** Google's recognizer when present, otherwise whatever the device prefers. */
+    private fun createPreferredRecognizer(): SpeechRecognizer {
+        for (component in PREFERRED_RECOGNIZERS) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .setComponent(component)
+            if (context.packageManager.queryIntentServices(intent, 0).isNotEmpty()) {
+                return SpeechRecognizer.createSpeechRecognizer(context, component)
             }
         }
+        return SpeechRecognizer.createSpeechRecognizer(context)
     }
 
     private val platformListener = object : RecognitionListener {
@@ -158,6 +191,21 @@ class SpeechRecognizerManager(private val context: Context) {
          * recognizer.
          */
         val DEFAULT_LANGUAGE: String get() = Locale.getDefault().toLanguageTag()
+
+        /**
+         * Recognizers to try before falling back to the device default.
+         *
+         * Google's is listed first because it is the one that actually works on
+         * the devices this app targets; a device whose *default* recognizer is
+         * a broken third-party service is a real, observed failure mode (see
+         * [ensureRecognizer]).
+         */
+        private val PREFERRED_RECOGNIZERS: List<ComponentName> = listOf(
+            ComponentName(
+                "com.google.android.googlequicksearchbox",
+                "com.google.android.voicesearch.serviceapi.GoogleRecognitionService",
+            ),
+        )
 
         /** Whether the device has any recognition service at all. */
         fun isAvailable(context: Context): Boolean =

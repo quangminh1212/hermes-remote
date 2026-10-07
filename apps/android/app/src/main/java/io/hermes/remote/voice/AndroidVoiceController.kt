@@ -7,18 +7,32 @@ import io.hermes.remote.ui.VoiceController
 /**
  * Concrete [VoiceController] the Activity hands to [io.hermes.remote.ui.MainViewModel].
  *
- * Owns the Android-side voice plumbing: system STT ([SpeechRecognizerManager]),
- * system TTS ([TtsSpeaker]) and the foreground wake-word service. Kept out of
- * the Activity so the Activity stays a thin Compose host.
+ * Owns the Android-side voice plumbing: system STT ([SpeechRecognizerManager])
+ * and system TTS ([TtsSpeaker]). Kept out of the Activity so the Activity stays
+ * a thin Compose host.
+ *
+ * There is no background listening: the microphone is opened only for a turn
+ * the user started, either by tapping the mic or by leaving continuous
+ * conversation on.
  */
 class AndroidVoiceController(private val context: Context) : VoiceController {
 
-    private val configStore = ConfigStore(context)
     private var recognizer: SpeechRecognizerManager? = null
     private var tts: TtsSpeaker? = null
 
-    /** Latched result of the last wake-word service start. */
-    private var wakeWordActive = false
+    /**
+     * Fired when a spoken reply finishes. Set by the Activity so the
+     * continuous-conversation loop knows it may reopen the microphone.
+     *
+     * Held here rather than passed to [speak] because TTS completion is
+     * asynchronous and the caller that starts the speech is not the one that
+     * needs to hear about its end.
+     */
+    var speakFinishedListener: (() -> Unit)? = null
+
+    override fun onSpeakFinished() {
+        speakFinishedListener?.invoke()
+    }
 
     /**
      * Initialize TTS eagerly (it is cheap) so the first spoken reply is prompt.
@@ -26,17 +40,31 @@ class AndroidVoiceController(private val context: Context) : VoiceController {
      */
     fun warmUp() {
         if (tts == null) {
-            tts = TtsSpeaker(context).also { it.init() }
+            tts = TtsSpeaker(context).also { it.init(ttsListener) }
         }
+    }
+
+    /**
+     * Bridges [TtsSpeaker.Listener] to [onSpeakFinished].
+     *
+     * Every terminal path (done, both error overloads, and a missing language)
+     * reports completion, because the conversation loop must never be left
+     * waiting for a callback TTS will not send — that would strand the user
+     * with a dead microphone.
+     */
+    private val ttsListener = object : TtsSpeaker.Listener {
+        override fun onStart() = Unit
+
+        override fun onDone() {
+            speakFinishedListener?.invoke()
+        }
+
+        override fun onLanguageMissing() = Unit
     }
 
     override fun isMicAvailable(): Boolean = SpeechRecognizerManager.isAvailable(context)
 
-    override fun isAssistantEnabled(): Boolean = configStore.isVoiceAssistantEnabled()
-
-    override fun isSpeakRepliesEnabled(): Boolean = configStore.isSpeakRepliesEnabled()
-
-    override fun isWakeWordActive(): Boolean = wakeWordActive
+    override fun isSpeakRepliesEnabled(): Boolean = ConfigStore(context).isSpeakRepliesEnabled()
 
     override fun startListening(
         onPartial: (String) -> Unit,
@@ -64,26 +92,15 @@ class AndroidVoiceController(private val context: Context) : VoiceController {
     }
 
     override fun speak(text: String) {
-        if (tts == null) tts = TtsSpeaker(context).also { it.init() }
+        // Pass the listener here too: if TTS was never warmed up this is the
+        // construction site, and a speaker without the listener would never
+        // report completion — silently breaking the conversation loop.
+        if (tts == null) tts = TtsSpeaker(context).also { it.init(ttsListener) }
         tts?.speak(text)
     }
 
     override fun stopSpeaking() {
         tts?.stop()
-    }
-
-    override fun setAssistantEnabled(enabled: Boolean): Boolean {
-        return if (enabled) {
-            VoiceAssistantService.start(context)
-            // The service reports whether the wake engine truly started via
-            // VoiceBus; assume enabled for UI immediacy and let the event correct it.
-            wakeWordActive = true
-            true
-        } else {
-            VoiceAssistantService.stop(context)
-            wakeWordActive = false
-            false
-        }
     }
 
     /** Release STT/TTS resources. Called from the Activity's onDestroy. */
