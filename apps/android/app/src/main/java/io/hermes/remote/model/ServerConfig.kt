@@ -99,6 +99,34 @@ data class ServerConfig(
 
     val modelsEndpoint: String get() = chatEndpoint.removeSuffix("/chat/completions") + "/models"
 
+    /**
+     * Root the non-`/v1` routes hang off, e.g. `https://host` or `host/p/dalek`.
+     *
+     * `/health`, `/v1/toolsets` and `/api/sessions` are not all under the same
+     * prefix: health and sessions sit above `/v1`, so deriving them from
+     * [chatEndpoint] would produce `.../v1/health` and 404. This strips back to
+     * the server root instead.
+     */
+    private val serverRoot: String
+        get() {
+            val base = cleanBaseUrl
+            if (base.endsWith("/v1/chat/completions")) return base.removeSuffix("/v1/chat/completions")
+            if (base.endsWith("/v1")) return base.removeSuffix("/v1")
+            val profileSegment = if (profile.isNotBlank()) "/p/$profile" else ""
+            // Keep an explicit /p/<profile> the user pasted, since the gateway
+            // scopes health and sessions to the profile too.
+            return if (profileSegment.isNotEmpty() && base.contains(profileSegment)) base else "$base$profileSegment"
+        }
+
+    /** `GET /health` — cheap liveness probe, no auth required by the gateway. */
+    val healthEndpoint: String get() = "$serverRoot/health/detailed"
+
+    /** `GET /v1/toolsets` — capabilities the PC offers. */
+    val toolsetsEndpoint: String get() = "$serverRoot/v1/toolsets"
+
+    /** `GET /api/sessions` — past conversations on the PC. */
+    val sessionsEndpoint: String get() = "$serverRoot/api/sessions"
+
     fun isValid(): Boolean = cleanBaseUrl.startsWith("http") && apiKey.isNotBlank()
 
     companion object {
