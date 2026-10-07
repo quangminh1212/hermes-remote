@@ -7,15 +7,15 @@
  * Why this exists
  * ---------------
  * The phone talks to one HTTP endpoint. Hermes' gateway exposes one model name,
- * so the app has no way to say "answer this with Codex instead". Rather than
- * teach the app about five different CLI protocols, this bridge sits beside the
- * gateway and speaks the same API the app already knows:
+ * so the app has no way to say "answer this with something else". This bridge
+ * sits beside the gateway and speaks the same API the app already knows:
  *
- *     POST /v1/chat/completions   { model: "codex", messages: [...] }
- *     GET  /v1/models             -> [{ id: "claude" }, { id: "codex" }, ...]
+ *     POST /v1/chat/completions   { model: "hermes", messages: [...] }
+ *     GET  /v1/models             -> [{ id: "hermes", ... }]
  *
- * The `model` field selects the agent. Nothing else about the app changes, and
- * the app gains a list of agents it can switch between.
+ * The `model` field selects the agent, and the Claude-Fable-shaped surface is kept
+ * even though one agent remains: it is what the app already speaks, and it is
+ * what lets another agent be added without touching the phone.
  *
  * Streaming
  * ---------
@@ -186,7 +186,11 @@ function completionBody(model, text, durationMs) {
 function createBridge(opts = {}) {
   const log = opts.log || (() => {});
   const timeoutMs = opts.timeoutMs || 10 * 60 * 1000;
-  const defaultAgent = opts.defaultAgent || "claude";
+  // "hermes" is the only adapter, so it is the only safe default. This used to
+  // say "claude"; leaving that would make a request with no `model` resolve to
+  // an agent that no longer exists, and the user would see a 404 naming a CLI
+  // the app never offered.
+  const defaultAgent = opts.defaultAgent || "hermes";
 
   return async function handle(req, res) {
     const url = new URL(req.url, "http://localhost");

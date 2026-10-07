@@ -54,6 +54,8 @@ const MESSAGES = {
 
     agents_found: "Agent CLIs found: %s",
     agents_none: "No agent CLI found — the app will only reach the Hermes gateway.",
+    agents_gateway_only:
+      "No spawnable agent CLI — %s is served by the gateway, so the app connects to it directly.",
     agents_bridge: "Agent bridge: %s (switch agent with the model field)",
     agents_off: "Agent bridge: off (--no-agents)",
 
@@ -80,7 +82,7 @@ const MESSAGES = {
     help_opt_port: "--port <n>          webview port for the QR page (default: auto)",
     help_opt_profile: "--profile <name>    Hermes profile for the phone (default: top-level key)",
     help_opt_webhook: "--webhook-token <t> enable /api/webhook/ask with secret token <t>",
-    help_opt_agent: "--agent <id>        agent CLI to use by default (claude, codex, ...)",
+    help_opt_agent: "--agent <id>        agent id to use by default (hermes)",
     help_opt_no_agents: "--no-agents         do not start the agent bridge",
     help_opt_lang: "--lang <code>       language for this output: en, vi, zh (default: system)",
     help_opt_no_open: "--no-open           do not open the browser automatically",
@@ -141,6 +143,8 @@ const MESSAGES = {
 
     agents_found: "Đã tìm thấy CLI agent: %s",
     agents_none: "Không tìm thấy CLI agent nào — app chỉ nối được tới Hermes gateway.",
+    agents_gateway_only:
+      "Không có CLI agent chạy được — %s do gateway phục vụ, nên app nối thẳng vào gateway.",
     agents_bridge: "Agent bridge: %s (đổi agent bằng trường model)",
     agents_off: "Agent bridge: tắt (--no-agents)",
 
@@ -167,7 +171,7 @@ const MESSAGES = {
     help_opt_port: "--port <n>          cổng webview cho trang QR (mặc định: tự chọn)",
     help_opt_profile: "--profile <tên>     profile Hermes cho điện thoại (mặc định: key gốc)",
     help_opt_webhook: "--webhook-token <t> bật /api/webhook/ask với token bí mật <t>",
-    help_opt_agent: "--agent <id>        agent CLI dùng mặc định (claude, codex, ...)",
+    help_opt_agent: "--agent <id>        agent id dùng mặc định (hermes)",
     help_opt_no_agents: "--no-agents         không khởi động agent bridge",
     help_opt_lang: "--lang <code>       ngôn ngữ cho kết quả này: en, vi, zh (mặc định: hệ thống)",
     help_opt_no_open: "--no-open           không tự mở trình duyệt",
@@ -226,6 +230,7 @@ const MESSAGES = {
 
     agents_found: "发现 Agent CLI：%s",
     agents_none: "未找到任何 Agent CLI — 应用只能连接 Hermes gateway。",
+    agents_gateway_only: "无可执行的 Agent CLI — %s 由 gateway 提供，应用将直接连接 gateway。",
     agents_bridge: "Agent 桥接：%s（通过 model 字段切换 agent）",
     agents_off: "Agent 桥接：已关闭（--no-agents）",
 
@@ -252,7 +257,7 @@ const MESSAGES = {
     help_opt_port: "--port <n>          二维码页面使用的 webview 端口（默认：自动）",
     help_opt_profile: "--profile <名称>    手机使用的 Hermes profile（默认：顶层密钥）",
     help_opt_webhook: "--webhook-token <t> 用密钥 <t> 开启 /api/webhook/ask",
-    help_opt_agent: "--agent <id>        默认使用的 agent CLI（claude、codex……）",
+    help_opt_agent: "--agent <id>        默认使用的 agent id（hermes）",
     help_opt_no_agents: "--no-agents         不启动 Agent 桥接",
     help_opt_lang: "--lang <code>       本输出的语言：en、vi、zh（默认：系统语言）",
     help_opt_no_open: "--no-open           不自动打开浏览器",

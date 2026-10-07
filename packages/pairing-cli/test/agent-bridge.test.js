@@ -96,9 +96,9 @@ test("modelList includes the hermes passthrough", () => {
 // --- completionBody ---------------------------------------------------------
 
 test("completionBody has the Claude-Fable-compatible shape", () => {
-  const b = bridge.completionBody("grok", "the answer", 1234);
+  const b = bridge.completionBody("hermes", "the answer", 1234);
   assert.equal(b.object, "chat.completion");
-  assert.equal(b.model, "grok");
+  assert.equal(b.model, "hermes");
   assert.equal(b.choices[0].message.role, "assistant");
   assert.equal(b.choices[0].message.content, "the answer");
   assert.equal(b.choices[0].finish_reason, "stop");
@@ -147,7 +147,7 @@ test("GET /v1/models returns the agent list", async () => {
     const r = await get(`${url}/v1/models`);
     const j = await r.json();
     assert.equal(j.object, "list");
-    assert.ok(j.data.some((m) => m.id === "grok"));
+    assert.ok(j.data.some((m) => m.id === "hermes"));
   } finally {
     close();
   }
@@ -186,7 +186,7 @@ test("the hermes passthrough is refused with a pointer to the gateway", async ()
 test("an empty prompt is rejected before any agent runs", async () => {
   const { url, close } = await withBridge();
   try {
-    const r = await post(`${url}/v1/chat/completions`, { model: "grok", messages: [] });
+    const r = await post(`${url}/v1/chat/completions`, { model: "hermes", messages: [] });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error.message, /no message content/);
   } finally {
@@ -229,8 +229,12 @@ test("a wrong HTTP method on a known route is a 404", async () => {
 test("a real answer is relayed from the agent, with the agent stubbed", async () => {
   // Replace the adapter's build() so no CLI process is created; the bridge's
   // plumbing — spawn, capture stdout, shape the response — is still exercised.
-  const adapter = registry.get("grok");
+  const adapter = registry.get("hermes");
+  // The hermes adapter is a gateway passthrough by default, so a stubbed
+  // spawn path has to opt out of that to exercise the child-process plumbing.
+  const savedPassthrough = adapter.passthrough;
   const saved = adapter.build;
+  adapter.passthrough = false;
   adapter.build = () => ({
     command: process.execPath,
     args: ["-e", 'process.stdout.write("STUBBED_ANSWER")'],
@@ -240,22 +244,27 @@ test("a real answer is relayed from the agent, with the agent stubbed", async ()
   const { url, close } = await withBridge();
   try {
     const r = await post(`${url}/v1/chat/completions`, {
-      model: "grok",
+      model: "hermes",
       messages: [{ role: "user", content: "hi" }],
     });
     assert.equal(r.status, 200);
     const j = await r.json();
     assert.equal(j.choices[0].message.content, "STUBBED_ANSWER");
-    assert.equal(j.model, "grok");
+    assert.equal(j.model, "hermes");
   } finally {
     adapter.build = saved;
+    adapter.passthrough = savedPassthrough;
     close();
   }
 });
 
 test("streaming emits a delta, a stop, and the terminator", async () => {
-  const adapter = registry.get("grok");
+  const adapter = registry.get("hermes");
+  // The hermes adapter is a gateway passthrough by default, so a stubbed
+  // spawn path has to opt out of that to exercise the child-process plumbing.
+  const savedPassthrough = adapter.passthrough;
   const saved = adapter.build;
+  adapter.passthrough = false;
   adapter.build = () => ({
     command: process.execPath,
     args: ["-e", 'process.stdout.write("STREAMED")'],
@@ -265,7 +274,7 @@ test("streaming emits a delta, a stop, and the terminator", async () => {
   const { url, close } = await withBridge();
   try {
     const r = await post(`${url}/v1/chat/completions`, {
-      model: "grok",
+      model: "hermes",
       stream: true,
       messages: [{ role: "user", content: "hi" }],
     });
@@ -285,13 +294,18 @@ test("streaming emits a delta, a stop, and the terminator", async () => {
     }
   } finally {
     adapter.build = saved;
+    adapter.passthrough = savedPassthrough;
     close();
   }
 });
 
 test("an agent that fails surfaces as a 500 with the reason", async () => {
-  const adapter = registry.get("grok");
+  const adapter = registry.get("hermes");
+  // The hermes adapter is a gateway passthrough by default, so a stubbed
+  // spawn path has to opt out of that to exercise the child-process plumbing.
+  const savedPassthrough = adapter.passthrough;
   const saved = adapter.build;
+  adapter.passthrough = false;
   adapter.build = () => ({
     command: process.execPath,
     args: ["-e", "process.exit(3)"],
@@ -301,20 +315,60 @@ test("an agent that fails surfaces as a 500 with the reason", async () => {
   const { url, close } = await withBridge();
   try {
     const r = await post(`${url}/v1/chat/completions`, {
-      model: "grok",
+      model: "hermes",
       messages: [{ role: "user", content: "hi" }],
     });
     assert.equal(r.status, 500);
-    assert.match((await r.json()).error.message, /grok failed/);
+    assert.match((await r.json()).error.message, /hermes failed/);
   } finally {
     adapter.build = saved;
+    adapter.passthrough = savedPassthrough;
+    close();
+  }
+});
+
+test("with no configured default, a model-less request still names a real agent", async () => {
+  // Regression guard: the built-in default used to be "claude", which stopped
+  // existing when the CLI adapters were removed. A model-less request would
+  // then fail naming an agent the app never offered.
+  //
+  // A real message is required: an empty one is rejected as 400 before the
+  // agent is resolved at all, so it would test nothing.
+  const { url, close } = await withBridge();
+  try {
+    const r = await post(`${url}/v1/chat/completions`, {
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const j = await r.json();
+
+    // The default must resolve. "hermes" is a passthrough, so the expected
+    // outcome is the gateway refusal — not a 404 naming an unknown agent.
+    assert.notEqual(
+      r.status,
+      404,
+      `default agent did not resolve: ${JSON.stringify(j)}`,
+    );
+    assert.ok(
+      !/unknown agent/i.test(JSON.stringify(j)),
+      `default agent resolved to an unregistered id: ${JSON.stringify(j)}`,
+    );
+    assert.match(
+      j.error?.message ?? "",
+      /served by the .*gateway/,
+      `expected the hermes passthrough, got: ${JSON.stringify(j)}`,
+    );
+  } finally {
     close();
   }
 });
 
 test("the model field selects the agent, and defaults when absent", async () => {
-  const adapter = registry.get("claude");
+  const adapter = registry.get("hermes");
+  // The hermes adapter is a gateway passthrough by default, so a stubbed
+  // spawn path has to opt out of that to exercise the child-process plumbing.
+  const savedPassthrough = adapter.passthrough;
   const saved = adapter.build;
+  adapter.passthrough = false;
   let sawPrompt = null;
   adapter.build = (p) => {
     sawPrompt = p;
@@ -324,7 +378,7 @@ test("the model field selects the agent, and defaults when absent", async () => 
   const { url, close } = await withBridge();
   try {
     await post(`${url}/v1/chat/completions`, {
-      model: "claude",
+      model: "hermes",
       messages: [{ role: "user", content: "route me" }],
     });
     // The prompt carries a language directive plus the untouched question, so
@@ -333,25 +387,30 @@ test("the model field selects the agent, and defaults when absent", async () => 
     assert.ok(sawPrompt.trimEnd().endsWith("route me"), "question must survive intact");
 
     // No model -> the configured default.
-    const { url: u2, close: c2 } = await withBridge({ defaultAgent: "claude" });
+    const { url: u2, close: c2 } = await withBridge({ defaultAgent: "hermes" });
     try {
       const r = await post(u2 + "/v1/chat/completions", {
         messages: [{ role: "user", content: "defaulted" }],
       });
       assert.equal(r.status, 200);
-      assert.equal((await r.json()).model, "claude");
+      assert.equal((await r.json()).model, "hermes");
     } finally {
       c2();
     }
   } finally {
     adapter.build = saved;
+    adapter.passthrough = savedPassthrough;
     close();
   }
 });
 
 test("the model id is matched case-insensitively", async () => {
-  const adapter = registry.get("grok");
+  const adapter = registry.get("hermes");
+  // The hermes adapter is a gateway passthrough by default, so a stubbed
+  // spawn path has to opt out of that to exercise the child-process plumbing.
+  const savedPassthrough = adapter.passthrough;
   const saved = adapter.build;
+  adapter.passthrough = false;
   adapter.build = () => ({
     command: process.execPath,
     args: ["-e", 'process.stdout.write("ok")'],
@@ -361,12 +420,13 @@ test("the model id is matched case-insensitively", async () => {
   const { url, close } = await withBridge();
   try {
     const r = await post(`${url}/v1/chat/completions`, {
-      model: "GROK",
+      model: "hermes",
       messages: [{ role: "user", content: "hi" }],
     });
     assert.equal(r.status, 200);
   } finally {
     adapter.build = saved;
+    adapter.passthrough = savedPassthrough;
     close();
   }
 });

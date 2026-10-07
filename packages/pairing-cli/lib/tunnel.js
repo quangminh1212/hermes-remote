@@ -104,6 +104,28 @@ async function ensureCloudflared(log = () => {}, t = (k) => k) {
 }
 
 /**
+ * Pull the public quick-tunnel URL out of a chunk of cloudflared output.
+ *
+ * A named function rather than an inline regex because this is the whole of the
+ * "did the tunnel come up?" decision, and it is the part most worth testing:
+ * cloudflared prints a banner containing other URLs (its own homepage, the
+ * release page) before the real one, so a looser match would latch onto the
+ * wrong address.
+ *
+ * @param {string} text
+ * @returns {string|null} the URL, or null when this chunk has none
+ */
+function extractTunnelUrl(text) {
+  if (typeof text !== "string") return null;
+  // The trailing boundary is load-bearing: without it the pattern happily
+  // matches the prefix of "https://x.trycloudflare.com.evil.test" and returns
+  // a URL that was never printed. A host must be followed by a path, a port, a
+  // query, or nothing at all — not by more domain.
+  const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com(?=[/:?#\s"']|$)/);
+  return m ? m[0] : null;
+}
+
+/**
  * Start a quick tunnel to localUrl. Resolves with { url, proc } once the public
  * URL appears in cloudflared's output (or rejects on timeout).
  */
@@ -124,12 +146,12 @@ function startTunnel(localUrl, binPath, timeoutMs = 45000, t = (k) => k) {
     }, timeoutMs);
 
     const onData = (buf) => {
-      const text = buf.toString();
-      const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-      if (m && !done) {
+      if (done) return;
+      const found = extractTunnelUrl(buf.toString());
+      if (found) {
         done = true;
         clearTimeout(timer);
-        resolve({ url: m[0], proc });
+        resolve({ url: found, proc });
       }
     };
 
@@ -152,4 +174,11 @@ function startTunnel(localUrl, binPath, timeoutMs = 45000, t = (k) => k) {
   });
 }
 
-module.exports = { ensureCloudflared, startTunnel, resolveCloudflared, binDir };
+module.exports = {
+  ensureCloudflared,
+  startTunnel,
+  resolveCloudflared,
+  binDir,
+  extractTunnelUrl,
+  platformAsset,
+};

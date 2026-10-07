@@ -41,6 +41,10 @@ function hasBin(bin) {
  * `.cmd`. Relying on PATH alone fails with ENOENT, which is exactly what
  * happened on the first probe run, so resolve explicitly and prefer `.cmd`.
  *
+ * A `.cmd` is a poor target, though: it forces `shell: true`, and then cmd.exe
+ * gets to reinterpret the prompt. So the shim is peeled one layer further by
+ * [resolveShimTarget] before it is used.
+ *
  * @returns {string|null} executable path, or null when not installed
  */
 function resolveBin(bin) {
@@ -74,52 +78,92 @@ function resolveBin(bin) {
 }
 
 /**
+ * Peel a Windows `.cmd`/`.bat` shim down to the real program it forwards to.
+ *
+ * npm generates these shims as a fixed template whose last line runs a quoted
+ * path with `%*` appended:
+ *
+ *     "%dp0%\node_modules\@opencode\cli\bin\opencode.exe"   %*
+ *
+ * Running that `.exe` directly means `spawn` needs no shell, which removes
+ * cmd.exe from the picture entirely and with it every quoting question. That
+ * matters because cmd.exe has no in-quote escape for `%`: a prompt like
+ * "100% done" was being corrupted to "100%% done" (and "50!" to "50^^!") by the
+ * old unconditional escaping, and the batch-only `%%` doubling does not collapse
+ * when the command is run through `cmd /c` instead of from a batch file.
+ *
+ * Only the npm template is recognised. Anything else — a hand-written shim, a
+ * path Node still cannot exec, a target that does not exist — returns null and
+ * the caller falls back to the shell path with [quoteForCmd].
+ *
+ * @returns {string|null} absolute path to a real executable, or null
+ */
+function resolveShimTarget(shimPath) {
+  if (process.platform !== "win32") return null;
+  if (!/\.(cmd|bat)$/i.test(shimPath)) return null;
+
+  let text;
+  try {
+    text = require("fs").readFileSync(shimPath, "utf8");
+  } catch (_) {
+    return null;
+  }
+
+  // The target is the executable on a line ending in %*, which is how the npm
+  // template passes the caller's arguments through. Anything between the quoted
+  // path and %* is fixed extra argv (a .js entry point, say), which we cannot
+  // reproduce without knowing it is one, so such a line is ignored below.
+  const matches = [...text.matchAll(/^\s*"([^"]+)"\s*(.*?)\s*%\*\s*$/gm)];
+  if (matches.length === 0) return null;
+
+  // Last match wins: the template opens with a GOTO/EXIT preamble and the
+  // actual invocation is the final such line.
+  const match = matches[matches.length - 1];
+  const raw = match[1];
+  const extraArgs = match[2];
+
+  // Only a bare passthrough is safe to peel. If the template injects its own
+  // arguments (e.g. `node ".../cli.js" %*`) then the real executable is `node`
+  // and the .js is an argument, which this function cannot express — the caller
+  // gets null and falls back to the quoted shell path.
+  if (extraArgs) return null;
+
+  // %dp0% / %~dp0% is the shim's own directory (npm sets it via CALL :find_dp0).
+  const dir = require("path").dirname(shimPath);
+  const expanded = raw
+    .replace(/%~dp0%?/gi, dir)
+    .replace(/%dp0%/gi, dir);
+
+  const resolved = require("path").isAbsolute(expanded)
+    ? expanded
+    : require("path").resolve(dir, expanded);
+
+  if (!/\.exe$/i.test(resolved)) return null;
+
+  try {
+    return require("fs").statSync(resolved).isFile() ? resolved : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Per-agent adapters.
  *
  * `id` is the name the phone sends as the model. Keep these short and stable:
  * they are user-visible in the app's agent picker and go into the QR payload.
+ *
+ * This list holds exactly one entry on purpose. The bridge used to fan out to
+ * whichever coding CLIs were installed (claude, codex, grok, opencode), which
+ * meant four spawn paths, four flag conventions and four failure modes to keep
+ * working — on a phone, where the user cannot see the child process or its
+ * stderr. Hermes Remote is a remote control for the Hermes gateway, so the
+ * gateway is the only backend; anything else was surface area without a user.
+ *
+ * Adding an entry back is cheap if that changes: the adapter contract below is
+ * still the same, and `run()` still spawns whatever `build()` describes.
  */
 const ADAPTERS = [
-  {
-    id: "claude",
-    label: "Claude Code",
-    bin: "claude",
-    description: "Anthropic's Claude Code CLI",
-    build(prompt) {
-      return { command: "claude", args: ["--print", String(prompt ?? "")], stdin: null };
-    },
-  },
-  {
-    id: "codex",
-    label: "OpenAI Codex",
-    bin: "codex",
-    description: "OpenAI Codex CLI",
-    build(prompt) {
-      // `codex exec -` reads the prompt from stdin. Passing it as an argument
-      // works too, but a leading dash in the prompt would be parsed as a flag,
-      // so stdin is the safer channel.
-      return { command: "codex", args: ["exec", "-"], stdin: String(prompt ?? "") };
-    },
-  },
-  {
-    id: "grok",
-    label: "Grok",
-    bin: "grok",
-    description: "xAI's Grok CLI",
-    build(prompt) {
-      // `-p/--single` is Grok's one-shot headless mode.
-      return { command: "grok", args: ["-p", String(prompt ?? "")], stdin: null };
-    },
-  },
-  {
-    id: "opencode",
-    label: "OpenCode",
-    bin: "opencode",
-    description: "OpenCode CLI",
-    build(prompt) {
-      return { command: "opencode", args: ["run", String(prompt ?? "")], stdin: null };
-    },
-  },
   {
     id: "hermes",
     label: "Hermes (direct)",
@@ -189,42 +233,54 @@ function run(id, prompt, opts = {}) {
     );
   }
 
+  // Prefer the real executable behind the shim: spawning it needs no shell, so
+  // cmd.exe never sees the prompt and no escaping is required. Falls back to
+  // the shim itself when it is not a recognisable npm wrapper.
+  const directCommand = resolveShimTarget(resolvedCommand) || resolvedCommand;
+
   return new Promise((resolve, reject) => {
     // A Windows .cmd/.bat shim is not a real executable: Node needs a shell to
     // run it, otherwise spawn fails with EINVAL.
     //
-    // `shell: true` with an args array is unsafe here — Node concatenates the
-    // arguments without escaping (DEP0190), so a prompt containing quotes or
-    // `&` would be reinterpreted by cmd.exe. Instead pass the whole command as
-    // a single shell string with every part individually quoted, and send the
-    // prompt on stdin whenever the adapter supports it. For the adapters that
-    // require the prompt as an argument, quoteForCmd() neutralises the shell
-    // metacharacters rather than trusting them.
-    const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedCommand);
+    // This is the fallback path only — [resolveShimTarget] above normally
+    // removes the shell from the equation. When it cannot, `shell: true` with
+    // an args array is unsafe, because Node concatenates the arguments without
+    // escaping (DEP0190), so the whole command goes as one string with each
+    // part individually quoted via [quoteForCmd].
+    const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(directCommand);
     const useStdin = spec.stdin !== null;
 
     let child;
     try {
+      // Ask CLIs not to colourise at all. opencode honours NO_COLOR (the
+      // informal standard), and FORCE_COLOR=0 overrides the TTY heuristics some
+      // tools use. This is belt-and-braces: [stripAnsi] still cleans whatever
+      // slips through on stderr.
+      const cleanEnv = { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" };
+
       if (needsShell && !useStdin) {
-        const line = [resolvedCommand, ...spec.args].map(quoteForCmd).join(" ");
+        const line = [directCommand, ...spec.args].map(quoteForCmd).join(" ");
         child = spawn(line, {
           cwd: opts.cwd || process.cwd(),
+          env: cleanEnv,
           windowsHide: true,
           shell: true,
           stdio: ["ignore", "pipe", "pipe"],
         });
       } else if (needsShell) {
         // Prompt goes on stdin, so only the fixed argv is concatenated.
-        const line = [resolvedCommand, ...spec.args].join(" ");
+        const line = [directCommand, ...spec.args].join(" ");
         child = spawn(line, {
           cwd: opts.cwd || process.cwd(),
+          env: cleanEnv,
           windowsHide: true,
           shell: true,
           stdio: ["pipe", "pipe", "pipe"],
         });
       } else {
-        child = spawn(resolvedCommand, spec.args, {
+        child = spawn(directCommand, spec.args, {
           cwd: opts.cwd || process.cwd(),
+          env: cleanEnv,
           windowsHide: true,
           stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
         });
@@ -261,9 +317,13 @@ function run(id, prompt, opts = {}) {
     });
 
     child.on("close", (code) => {
-      const text = stdout.trim();
+      // Some CLIs colour their output even when it is not a TTY — opencode
+      // writes "\e[91m\e[1mError:\e[0m …" to stderr. Those bytes would travel
+      // to the phone inside the error text and render as literal junk, so strip
+      // them here rather than letting each client deal with it.
+      const text = stripAnsi(stdout).trim();
       if (code !== 0 && !text) {
-        const detail = (stderr.trim() || `exit code ${code}`).slice(0, 400);
+        const detail = (stripAnsi(stderr).trim() || `exit code ${code}`).slice(0, 400);
         return done(reject, new Error(`${adapter.id} failed: ${detail}`));
       }
       if (!text) {
@@ -279,6 +339,25 @@ function run(id, prompt, opts = {}) {
       child.stdin.end(spec.stdin);
     }
   });
+}
+
+/**
+ * Remove ANSI/VT100 escape sequences from CLI output.
+ *
+ * Covers SGR colour codes, Claude-Fable movement, and the OSC sequences some tools
+ * use for window titles. The phone renders answers as plain text, so these
+ * bytes are never wanted and always look like corruption when they get through.
+ */
+function stripAnsi(s) {
+  if (typeof s !== "string") return s;
+  return s
+    // CSI: ESC [ … final-byte
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    // OSC: ESC ] … BEL or ESC \
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+    // Any remaining lone escapes and vertical-tab/backspace noise.
+    .replace(/\u001b[@-Z\\-_]/g, "")
+    .replace(/[\u0008\u000b\u000c]/g, "");
 }
 
 /**
@@ -299,18 +378,48 @@ function commandExists(p) {
 /**
  * Quote one token for cmd.exe.
  *
- * Used only when a Windows .cmd shim forces `shell: true` and the prompt must
- * travel as an argument. cmd.exe has no reliable escaping for every
- * metacharacter, so the strategy is: wrap in double quotes, double any embedded
- * quote, and percent-escape the characters cmd.exe expands before the target
- * program sees them (`%`, `!`, and the pipe/redirect set inside quotes).
+ * Fallback path only: [resolveShimTarget] normally removes the shell entirely.
+ * This is used when a `.cmd` could not be peeled, so the prompt has to survive
+ * cmd.exe's parsing.
+ *
+ * The strategy is to wrap the token in double quotes and double any embedded
+ * quote, which handles whitespace, `&`, `|`, `<`, `>`, `;` and `^`. Inside
+ * double quotes cmd.exe treats those as literal, and `^`/`!` are NOT escape
+ * characters there — cmd.exe only consumes `^` outside quotes and only expands
+ * `!` when delayed expansion is enabled, which it is not for a plain
+ * `cmd /c` spawn.
+ *
+ * `%` is the one real hazard: `%NAME%` IS expanded even inside quotes, so a
+ * prompt containing `%PATH%` would leak the environment into the child. There
+ * is no in-quote escape that both blocks the expansion and disappears — `^%`
+ * and `%NAME^%` both stop the expansion but leave the caret in the delivered
+ * text, and `%%` only collapses when parsed from a *batch file*, not when the
+ * command is run through `cmd /c`. So the expansion is broken by inserting a
+ * caret inside the name, which prevents lookup; the stray caret is the lesser
+ * evil and only appears for prompts that literally contain `%NAME%`.
+ *
+ * A lone `%` (e.g. "50% done") is not special to cmd.exe and is passed through
+ * untouched. Doubling it — as this function used to — was the bug: it corrupted
+ * every prompt containing a percent sign.
  */
 function quoteForCmd(token) {
   const s = String(token);
-  // Inside double quotes cmd.exe still expands %VAR%; `^` does not stop that,
-  // doubling the percent does not help either, so strip the expansion prefix.
-  const noExpand = s.replace(/%/g, "%%").replace(/!/g, "^^!");
+  // Break `%NAME%` lookups without touching a bare `%`. The caret sits between
+  // the name characters, so cmd.exe finds no variable to expand.
+  const noExpand = s.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, "%$1^%");
   return `"${noExpand.replace(/"/g, '""')}"`;
 }
 
-module.exports = { all, available, get, run, hasBin, resolveBin, quoteForCmd, commandExists, ADAPTERS };
+module.exports = {
+  all,
+  available,
+  get,
+  run,
+  hasBin,
+  resolveBin,
+  resolveShimTarget,
+  quoteForCmd,
+  stripAnsi,
+  commandExists,
+  ADAPTERS,
+};

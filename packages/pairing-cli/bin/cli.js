@@ -152,6 +152,38 @@ async function startAgentBridge(opts) {
   };
 }
 
+/**
+ * Decide where the phone should be pointed for chat, and whether to start the
+ * agent bridge at all.
+ *
+ * Extracted and exported as a pure function because this is the decision that
+ * broke: the CLI only asked "are any agent ids known?" and, on the strength of
+ * a lone passthrough id, started a bridge and pointed the QR at it. The bridge
+ * cannot answer for a passthrough — it replies "point the app at the gateway" —
+ * so the phone's first message failed with 400.
+ *
+ * The rule is: a bridge is only useful when it has at least one adapter that
+ * spawns a real child process. A passthrough id is not one, however valid it is
+ * as an agent name.
+ *
+ * @param {Array<{id:string, passthrough?:boolean}>} available adapters present
+ * @returns {{agents:string[], spawnable:string[], useBridge:boolean, notice:string}}
+ *   `notice` names the console line to print, so the message and the routing
+ *   can never disagree.
+ */
+function routeAgents(available) {
+  const list = Array.isArray(available) ? available : [];
+  const agents = list.map((a) => a.id);
+  const spawnable = list.filter((a) => !a.passthrough).map((a) => a.id);
+
+  let notice;
+  if (spawnable.length) notice = "agents_bridge";
+  else if (agents.length) notice = "agents_gateway_only";
+  else notice = "agents_none";
+
+  return { agents, spawnable, useBridge: spawnable.length > 0, notice };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const t = translator(args.lang);
@@ -191,11 +223,17 @@ async function main() {
   let bridgeUrl = "";
   let agents = [];
   if (args.agents) {
-    // available() returns descriptors; the CLI only needs the ids, both for
-    // the console line and for the QR/page payload the phone reads.
-    agents = registry.available().map((a) => a.id);
-    if (agents.length) {
-      console.log("  ✔ " + t("agents_found", agents.join(", ")));
+    // routeAgents decides both what to advertise AND which line to print, so
+    // the two cannot drift apart. See its doc comment for why a passthrough id
+    // must not count as a reason to start the bridge.
+    const route = routeAgents(registry.available());
+    agents = route.agents;
+
+    if (route.agents.length) {
+      console.log("  ✔ " + t("agents_found", route.agents.join(", ")));
+    }
+
+    if (route.useBridge) {
       const started = await startAgentBridge({
         port: cfg.port + 1,
         apiKey: cfg.apiKey,
@@ -204,9 +242,14 @@ async function main() {
       bridgeProc = started.proc;
       bridgeHandle = started._handle;
       bridgeUrl = started.url;
-      console.log("  ✔ " + t("agents_bridge", bridgeUrl));
+      console.log("  ✔ " + t(route.notice, bridgeUrl));
+    } else if (route.agents.length) {
+      // Only passthroughs are installed, so chat is served by the gateway
+      // directly. Saying this out loud matters: otherwise the console implies a
+      // bridge the phone will not be pointed at.
+      console.log("  ℹ " + t(route.notice, route.agents.join(", ")));
     } else {
-      console.log("  ℹ " + t("agents_none"));
+      console.log("  ℹ " + t(route.notice));
     }
   } else {
     console.log("  ℹ " + t("agents_off"));
@@ -309,6 +352,8 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
+// A single export statement: two would silently clobber each other, and the
+// last one wins without any error.
 if (require.main === module) {
   main().catch((e) => {
     console.error("\n  ✖ Lỗi:", e.message, "\n");
@@ -316,4 +361,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, parseArgs, lanIP };
+module.exports = { main, parseArgs, lanIP, routeAgents };
