@@ -22,7 +22,8 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "pnpm": ">=12.0.0"
   },
   "scripts": {
     "start": "node bin/cli.js",
@@ -38,5 +39,6 @@
     "win32",
     "darwin",
     "linux"
-  ]
+  ],
+  "packageManager": "pnpm@12.11.2"
 }
