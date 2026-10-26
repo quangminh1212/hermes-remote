@@ -66,14 +66,14 @@ print_info "Step 4/4: Starting relay server..."
 echo ""
 echo "========================================="
 echo "Server starting in background..."
-echo "WebSocket endpoint: ws://localhost:8765/ws"
-echo "Health check: http://localhost:8765/"
+echo "WebSocket endpoint: ws://localhost:8766/ws"
+echo "Health check: http://localhost:8766/"
 echo "Press Ctrl+C to stop server"
 echo "========================================="
 echo ""
 
 # Run server in foreground (or uncomment next line for background)
-exec python3 relay_server.py --host 0.0.0.0 --port 8765
+exec python3 relay_server.py --host 0.0.0.0 --port 8766
 
 # Uncomment this line to run in background instead:
-# nohup python3 relay_server.py --host 0.0.0.0 --port 8765 > server.log 2>&1 &
+# nohup python3 relay_server.py --host 0.0.0.0 --port 8766 > server.log 2>&1 &

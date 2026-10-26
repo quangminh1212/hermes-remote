@@ -55,13 +55,13 @@ echo Step 4/4: Starting relay server...
 echo.
 echo =========================================
 echo Server starting...
-echo WebSocket endpoint: ws://localhost:8765/ws
-echo Health check: http://localhost:8765/
+echo WebSocket endpoint: ws://localhost:8766/ws
+echo Health check: http://localhost:8766/
 echo Press Ctrl+C to stop server
 echo =========================================
 echo.
 
 REM Run server
-python relay_server.py --host 0.0.0.0 --port 8765
+python relay_server.py --host 0.0.0.0 --port 8766
 
 pause

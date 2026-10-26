@@ -5,7 +5,7 @@ Hermes Android Bridge - Python Relay Server
 Python plugin that acts as a bridge between Hermes Agent and Android devices.
 This server listens for tool calls from the agent and relays them to connected mobile devices.
 
-Usage: python relay_server.py --host 0.0.0.0 --port 8765
+Usage: python relay_server.py --host 0.0.0.0 --port 8766
 """
 
 import asyncio
@@ -446,7 +446,7 @@ async def health_check(request: web.Request) -> web.Response:
     })
 
 
-def create_app(port: int = 8765) -> web.Application:
+def create_app(port: int = 8766) -> web.Application:
     """Create and configure the web application"""
     
     app = web.Application()
@@ -471,7 +471,7 @@ async def register_tools_endpoint(request: web.Request) -> web.Response:
     })
 
 
-async def main(host: str = "0.0.0.0", port: int = 8765):
+async def main(host: str = "0.0.0.0", port: int = 8766):
     """Main entry point"""
     
     print("=" * 60)
@@ -506,7 +506,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Hermes Android Bridge Relay Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
+    parser.add_argument("--port", type=int, default=8766, help="Port to bind to")
     
     args = parser.parse_args()
     

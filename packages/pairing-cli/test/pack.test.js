@@ -21,7 +21,8 @@ test("parseArgs: tunnel on by default, --no-tunnel / --lan disable it", () => {
   assert.equal(parseArgs([]).tunnel, true);
   assert.equal(parseArgs(["--no-tunnel"]).tunnel, false);
   assert.equal(parseArgs(["--lan"]).tunnel, false);
-  assert.equal(parseArgs(["--port", "8765"]).port, 8765);
+  assert.equal(parseArgs([]).port, 8766);
+  assert.equal(parseArgs(["--port", "8766"]).port, 8766);
   assert.equal(parseArgs(["--no-open"]).open, false);
 });
 

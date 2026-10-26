@@ -3,7 +3,7 @@ Test script to verify Python relay server functionality
 Run this after starting the relay server
 
 This is a manual smoke script, not a unit test: it talks to a relay that must
-already be listening on :8765. pytest still collects it because of the `test_`
+already be listening on :8766. pytest still collects it because of the `test_`
 filename, so the async entry point is skipped unless the server is up — see the
 guard inside, which turns the usual connection error into a skip rather than a
 failure that hides real regressions.
@@ -18,7 +18,7 @@ from aiohttp import ClientSession
 # Empty the list to hide this module from pytest entirely.
 pytestmark = pytest.mark.skipif(
     os.environ.get("RELAY_LIVE") != "1",
-    reason="manual smoke script — needs a relay listening on :8765 (set RELAY_LIVE=1)",
+    reason="manual smoke script — needs a relay listening on :8766 (set RELAY_LIVE=1)",
 )
 
 
@@ -34,7 +34,7 @@ async def test_relay_server():
         # Test 1: Health check
         print("\n[TEST 1] Testing health endpoint...")
         async with ClientSession() as session:
-            async with session.get('http://localhost:8765') as response:
+            async with session.get('http://localhost:8766') as response:
                 if response.status == 200:
                     data = await response.json()
                     print(f"✅ Health check passed: {data}")
@@ -44,7 +44,7 @@ async def test_relay_server():
         
         # Test 2: Register tools
         print("\n[TEST 2] Fetching available tools...")
-        async with session.get('http://localhost:8765/api/v1/tools/register') as response:
+        async with session.get('http://localhost:8766/api/v1/tools/register') as response:
             if response.status == 200:
                 tools_data = await response.json()
                 tools = tools_data['tools']
@@ -62,7 +62,7 @@ async def test_relay_server():
         
         # This would require actual pairing code from server
         # For now, just verify the endpoint is ready
-        print("⏳ WebSocket endpoint ready at ws://localhost:8765/ws")
+        print("⏳ WebSocket endpoint ready at ws://localhost:8766/ws")
         print("   (Requires valid pairing code for authentication)")
         
         print("\n" + "="*60)

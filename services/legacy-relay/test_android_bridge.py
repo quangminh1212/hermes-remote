@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 class AndroidBridgeTester:
     """Test client for Android Bridge WebSocket API"""
     
-    def __init__(self, server_url: str = "ws://localhost:8765/ws"):
+    def __init__(self, server_url: str = "ws://localhost:8766/ws"):
         self.server_url = server_url
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.session_token: Optional[str] = None

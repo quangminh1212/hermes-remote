@@ -16,7 +16,7 @@ sent gesture/UI-tree tool calls, the phone executed them through an
 AccessibilityService and returned the result.
 
 ```
-Hermes agent ──tool call──► relay :8765 ──WS──► Android device
+Hermes agent ──tool call──► relay :8766 ──WS──► Android device
                           ◄──result──
 ```
 

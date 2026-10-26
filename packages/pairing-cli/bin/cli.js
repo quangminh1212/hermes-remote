@@ -7,7 +7,7 @@
  *   npx hermes-remote            # tunnel by default (public URL in the QR)
  *   hermes-remote --no-tunnel    # LAN only
  *   hermes-remote --lan           # alias for --no-tunnel
- *   hermes-remote --port 8765     # fixed webview port
+ *   hermes-remote --port 8766     # fixed webview port
  *   hermes-remote --no-open       # don't auto-open the browser
  */
 
@@ -27,7 +27,7 @@ function parseArgs(argv) {
   const a = {
     tunnel: true,
     open: true,
-    port: 0,
+    port: 8766,
     profile: "",
     webhookToken: "",
     agents: true,

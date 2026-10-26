@@ -203,7 +203,7 @@ async def test_websocket_connection():
     `TestWebSocket` class it never instantiated and then bound a fixed port with
     an unimported `ClientSession`, so it could never pass on any machine.
     """
-    app = create_app(8765)
+    app = create_app(8766)
     runner = web.AppRunner(app)
     await runner.setup()
     # Port 0 asks the OS for a free port, so parallel runs cannot collide.

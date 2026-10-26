@@ -30,7 +30,7 @@ camera at the code → the app configures and connects itself.
 ```bash
 npx hermes-remote              # tunnel + QR page (recommended)
 npx hermes-remote --no-tunnel  # LAN only (phone must be on the same Wi-Fi)
-npx hermes-remote --port 8765  # fixed webview port
+npx hermes-remote --port 8766  # fixed webview port
 npx hermes-remote --no-open    # don't auto-open the browser
 npx hermes-remote --webhook-token s3cr3t   # enable the voice-assistant webhook
 ```
